@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="mn"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b6e69">
+<title>Data Event</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#172033;font-family:system-ui,sans-serif}
+header{background:#fff;padding:14px;border-bottom:1px solid #ddd;position:sticky;top:0;z-index:5}h1{margin:0;font-size:20px}
+small{color:#667085}nav{display:flex;gap:6px;padding:10px;position:sticky;top:60px;background:#f4f7fb;z-index:4}
+button{border:1px solid #dce3eb;background:#fff;border-radius:9px;padding:8px;cursor:pointer}nav button.active{background:#0b6e69;color:#fff}
+main{max-width:1100px;margin:auto;padding:0 10px 30px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.card,.eq,.stat{background:#fff;border:1px solid #e3e8ef;border-radius:13px;padding:12px;margin-bottom:10px}.stat b{display:block;font-size:22px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.name{font-weight:800}.type{font-size:11px;color:#667085}
+.current{background:#f1f5f9;border-radius:8px;padding:8px;margin:8px 0;font-size:13px}.statuses{display:grid;grid-template-columns:repeat(2,1fr);gap:5px}
+.statuses button{font-size:11px;text-align:left}.statuses button.active{background:#e6f5f3;border-color:#0b6e69;font-weight:700}
+.log{display:grid;grid-template-columns:70px 110px 1fr;gap:7px;padding:8px 0;border-bottom:1px solid #eee;font-size:12px}
+select{width:100%;padding:10px;border:1px solid #ddd;border-radius:9px}@media(max-width:650px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+#msg{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#172033;color:#fff;padding:10px 14px;border-radius:10px;display:none}
+</style><script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script></head><body>
+<header><h1>⛏ Data Event</h1><small>Supabase database-тэй холбогдсон</small></header>
+<nav><button class="active" onclick="show('dash',this)">Dashboard</button><button onclick="show('eq',this)">Equipment</button><button onclick="show('hour',this)">Цагийн мэдээ</button></nav>
+<main><section id="dash"></section><section id="eq" style="display:none"></section><section id="hour" style="display:none"></section></main><div id="msg"></div>
+<script>
+const API_URL="https://vchffwfkqcscyjwjrwge.supabase.co", API_KEY="sb_publishable_sxW6qob3dT2O1vrCTBxZVw_6zs5HZTN";
+const defaultEq=[["CAT16M-01", "Автогрейдер"], ["CAT16M-02", "Автогрейдер"], ["D10-01", "Бульдозер"], ["Dozer K375A", "Бульдозер"], ["830-276", "Автосамосвал"], ["830-303", "Автосамосвал"], ["830-304", "Автосамосвал"], ["830-305", "Автосамосвал"], ["830-306", "Автосамосвал"], ["PC3000", "Экскаватор"], ["PC4000", "Экскаватор"], ["410-01", "Дрилл"], ["410-02", "Дрилл"], ["WA-470", "Ковшит ачигч"], ["WA-900", "Ковшит ачигч"], ["39-01", "Туслах техник"]], defaultStatuses=["Хүдэр олборлолт", "Хөрс хуулалт", "Тэсэлгээнээс гаргах шилжилт", "Тэсэлгээний улмаас зогссон", "Тэсэлгээнээс оруулах шилжилт", "Мөргөцөг хооронд шилжилт", "Нөөцөнд зогссон", "Цайны цаг", "Унтлагын цаг", "Хувийн цаг", "Түлш авах", "Ус авах", "Операторгүй", "Ул түрэлт", "Ээлж солих", "Хорших техник эвдэрсэн — механик", "Хорших техник эвдэрсэн — цахилгаан", "Якно зөөвөрлөх", "Нэг шугамын тэжээлтэй техник асаах", "Шугамын ажил", "Гадны ажил", "Бусад ажил", "Ажиллаж байна", "Оношилгоо механик", "Гэрээт компани", "Инженертэй хэлэлцэх"];
+let eq=[], statuses=defaultStatuses, events=[];
+function esc(x){return String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function fmt(x){return x?new Date(x).toLocaleString("mn-MN",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}
+function toast(t){let m=document.getElementById("msg");m.textContent=t;m.style.display="block";setTimeout(()=>m.style.display="none",2200)}
+async function api(path,opts={}){
+ const h={"apikey":API_KEY,"Authorization":"Bearer "+API_KEY,"Content-Type":"application/json",...(opts.headers||{})};
+ let r=await fetch(API_URL+"/rest/v1/"+path,{...opts,headers:h});
+ let txt=await r.text(), data; try{data=txt?JSON.parse(txt):null}catch{data=txt}
+ if(!r.ok) throw new Error((data&&data.message)||txt||("HTTP "+r.status));
+ return data;
+}
+async function load(){
+ try{
+  eq=await api("equipment?select=*&order=name");
+  let s=await api("status_types?select=name&order=id"); if(s?.length) statuses=s.map(x=>x.name);
+  try{events=await api("equipment_events?select=equipment_id,status,start_time,operator_name&order=start_time.desc&limit=500")}catch(e){events=[]}
+  render();
+ }catch(e){
+  const box='<div class="err"><b>Supabase уншихад алдаа:</b><br>'+esc(e.message)+'<br><br>SQL Editor дээр <b>select * from equipment;</b> ажиллуулаад шалгаарай.</div>';
+  document.getElementById("dash").innerHTML=box; document.getElementById("eq").innerHTML=box;
+ }
+}
+function getOperator(){
+ const v=(document.getElementById("operatorInput")?.value || localStorage.getItem("data_event_operator") || "").trim();
+ return v;
+}
+function saveOperator(v){ localStorage.setItem("data_event_operator", v.trim()); }
+function clearOperator(){ localStorage.removeItem("data_event_operator"); const x=document.getElementById("operatorInput"); if(x)x.value=""; }
+async function setStatus(id,status){
+ let item=eq.find(x=>x.id===id); if(!item)return;
+ let operator=getOperator();
+ if(!operator){ toast("Эхлээд операторын нэр оруулна уу."); document.getElementById("operatorInput")?.focus(); return; }
+ let t=new Date().toISOString();
+ try{
+  await api("equipment_events?equipment_id=eq."+id+"&end_time=is.null",{method:"PATCH",body:JSON.stringify({end_time:t})});
+  await api("equipment_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({equipment_id:id,status:status,start_time:t,operator_name:operator})});
+  await api("equipment?id=eq."+id,{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({current_status:status})});
+  toast(item.name+" → "+status); await load();
+ }catch(e){toast("Хадгалах алдаа: "+e.message)}
+}
+function show(p,b){["dash","eq","hour"].forEach(x=>document.getElementById(x).style.display=x===p?"block":"none");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");render()}
+function render(){
+ let work=eq.filter(x=>["Хүдэр олборлолт","Хөрс хуулалт","Ажиллаж байна"].includes(x.current_status)).length;
+ let ore=eq.filter(x=>x.current_status==="Хүдэр олборлолт").length,waste=eq.filter(x=>x.current_status==="Хөрс хуулалт").length;
+ document.getElementById("dash").innerHTML='<div class="stats"><div class="stat">Нийт техник<b>'+eq.length+'</b></div><div class="stat">Ажиллаж буй<b>'+work+'</b></div><div class="stat">Хүдэр<b>'+ore+'</b></div><div class="stat">Хөрс<b>'+waste+'</b></div></div><div class="card"><b>Одоогийн төлөв</b>'+eq.map(x=>'<div class="log"><b>'+esc(x.name)+'</b><span>'+esc(x.current_status||"Нөөцөнд зогссон")+'</span><span>'+fmt(x.created_at)+'</span></div>').join("")+"</div>";
+ document.getElementById("eq").innerHTML='<div class="card">
+<b>Оператор</b>
+<div style="display:flex;gap:7px;margin-top:8px">
+<input id="operatorInput" placeholder="Операторын нэр" style="flex:1;padding:10px;border:1px solid #d8e0e8;border-radius:9px" oninput="saveOperator(this.value)">
+<button onclick="clearOperator()" style="padding:10px;border:1px solid #d8e0e8;background:white;border-radius:9px">Цэвэрлэх</button>
+</div>
+<small>Нэрийг нэг удаа оруулна. Дараагийн төлөвүүдэд автоматаар хадгалагдана.</small>
+</div>
+<div class="card"><b>Төлөвийг шууд өөрчлөх</b><br><small>Товч дарахад database-д шууд хадгална.</small></div><div class="grid">'+eq.map(x=>'<div class="eq"><div class="name">'+esc(x.name)+'</div><div class="type">'+esc(x.equipment_type)+'</div><div class="current"><b>'+esc(x.current_status||"Нөөцөнд зогссон")+'</b></div><div class="statuses">'+statuses.map(s=>'<button class="'+(x.current_status===s?"active":"")+'" onclick=\'setStatus('+x.id+','+JSON.stringify(s)+')\'>'+esc(s)+'</button>').join("")+"</div></div>").join("")+"</div>";
+ const op=document.getElementById("operatorInput"); if(op) op.value=localStorage.getItem("data_event_operator")||"";
+ renderHour();
+}
+function renderHour(){
+ let h=Number(document.getElementById("hourSelect")?.value??new Date().getHours());
+ let list=events.filter(x=>new Date(x.start_time).getHours()===h);
+ document.getElementById("hour").innerHTML='<div class="card"><b>Цагийн мэдээ</b><button onclick="exportExcel()" style="margin:8px 0;padding:10px 14px;border:0;border-radius:9px;background:#0b6e69;color:white;font-weight:700">📊 Excel татах</button><button onclick="exportAllExcel()" style="margin:8px 0 8px 6px;padding:10px 14px;border:1px solid #0b6e69;border-radius:9px;background:white;color:#0b6e69;font-weight:700">Бүх мэдээ</button><select id="hourSelect" onchange="renderHour()">'+Array.from({length:24},(_,i)=>'<option value="'+i+'" '+(i===h?"selected":"")+'>'+String(i).padStart(2,"0")+":00 – "+String((i+1)%24).padStart(2,"0")+":00</option>").join("")+'</select></div><div class="card">'+(list.length?list.map(x=>{let e=eq.find(q=>q.id===x.equipment_id);return '<div class="log"><b>'+fmt(x.start_time)+'</b><span>'+esc(e?.name||x.equipment_id)+'</span><span>'+esc(x.status)+'</span></div>'}).join(""):"Энэ цагт event алга.")+"</div>";
+}
+function exportExcel(){
+  if(typeof XLSX==="undefined"){ toast("Excel модуль ачаалагдаагүй байна. Internet-ээ шалгана уу."); return; }
+  const h=Number(document.getElementById("hourSelect")?.value ?? new Date().getHours());
+  const rows=events
+    .filter(x=>new Date(x.start_time).getHours()===h)
+    .map(x=>{
+      const e=eq.find(q=>q.id===x.equipment_id);
+      return {
+        "Огноо": new Date(x.start_time).toLocaleDateString("mn-MN"),
+        "Цаг": new Date(x.start_time).toLocaleTimeString("mn-MN",{hour:"2-digit",minute:"2-digit"}),
+        "Техник": e?.name || x.equipment_id,
+        "Техникийн төрөл": e?.equipment_type || "",
+        "Төлөв": x.status,
+        "Оператор": x.operator_name || ""
+      };
+    });
+  const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{"Мэдээлэл":"Сонгосон цагт event байхгүй"}]);
+  ws["!cols"]=[{wch:14},{wch:9},{wch:16},{wch:18},{wch:34},{wch:18}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Цагийн мэдээ");
+  XLSX.writeFile(wb,"Data_Event_"+String(h).padStart(2,"0")+"00.xlsx");
+  toast("Excel татагдаж байна");
+}
+function exportAllExcel(){
+  if(typeof XLSX==="undefined"){ toast("Excel модуль ачаалагдаагүй байна. Internet-ээ шалгана уу."); return; }
+  const rows=events.map(x=>{
+    const e=eq.find(q=>q.id===x.equipment_id);
+    return {
+      "Огноо": new Date(x.start_time).toLocaleDateString("mn-MN"),
+      "Эхэлсэн цаг": new Date(x.start_time).toLocaleString("mn-MN"),
+      "Дууссан цаг": x.end_time ? new Date(x.end_time).toLocaleString("mn-MN") : "",
+      "Техник": e?.name || x.equipment_id,
+      "Техникийн төрөл": e?.equipment_type || "",
+      "Төлөв": x.status,
+      "Оператор": x.operator_name || ""
+    };
+  });
+  const current=eq.map(e=>({
+    "Техник":e.name,
+    "Техникийн төрөл":e.equipment_type || "",
+    "Одоогийн төлөв":e.current_status || "Нөөцөнд зогссон"
+  }));
+  const wb=XLSX.utils.book_new();
+  const ws1=XLSX.utils.json_to_sheet(rows.length?rows:[{"Мэдээлэл":"Event байхгүй"}]);
+  const ws2=XLSX.utils.json_to_sheet(current);
+  ws1["!cols"]=[{wch:14},{wch:20},{wch:20},{wch:16},{wch:18},{wch:34},{wch:18}];
+  ws2["!cols"]=[{wch:16},{wch:20},{wch:28}];
+  XLSX.utils.book_append_sheet(wb,ws1,"Бүх мэдээ");
+  XLSX.utils.book_append_sheet(wb,ws2,"Одоогийн төлөв");
+  XLSX.writeFile(wb,"Data_Event_Buh_Medee.xlsx");
+  toast("Бүх мэдээ Excel файл болж татагдаж байна");
+}
+
+load();
+</script><script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));}</script></body></html>
