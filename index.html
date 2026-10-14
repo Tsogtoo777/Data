@@ -140,6 +140,8 @@ let equipment = [];
 let statuses = [];
 let events = [];
 let productionLogs = [];
+let sharedOperators = {};
+let operatorSyncReady = false;
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, function(c) {
@@ -195,6 +197,10 @@ async function loadData() {
     } catch (_) {
       productionLogs = [];
     }
+    // Operator names are shared in Supabase, not browser storage.
+    const operatorRows = await api("equipment_operator_names?select=equipment_id,operator_name");
+    sharedOperators = Object.fromEntries(operatorRows.map(row => [String(row.equipment_id), String(row.operator_name || "")]));
+    operatorSyncReady = true;
     render();
     renderProduction();
     renderReport();
@@ -222,28 +228,51 @@ const EXTRA_STATUSES = [
   "Уул технологийн хүндрэл"
 ];
 
-function getOperators() {
+function getLocalOperatorsForImport() {
   try { return JSON.parse(localStorage.getItem("data_event_operators") || "{}"); }
   catch (_) { return {}; }
 }
 
 function getOperator(equipmentId) {
-  const operators = getOperators();
-  return String(operators[equipmentId] || "").trim();
+  return String(sharedOperators[String(equipmentId)] || "").trim();
 }
 
-function saveOperator(equipmentId, value) {
-  const operators = getOperators();
+async function saveOperator(equipmentId, value) {
+  if (!operatorSyncReady) { toast("Операторын мэдээлэл ачаалагдаагүй байна."); return false; }
+  const id = String(equipmentId);
   const name = String(value || "").trim();
-  if (name) operators[equipmentId] = name;
-  else delete operators[equipmentId];
-  localStorage.setItem("data_event_operators", JSON.stringify(operators));
+  try {
+    // Upsert only the named equipment; no other equipment is affected.
+    await api("equipment_operator_names?on_conflict=equipment_id", {
+      method:"POST",
+      headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify({equipment_id:id,operator_name:name})
+    });
+    sharedOperators[id] = name;
+    return true;
+  } catch (error) {
+    toast("Оператор хадгалах алдаа: " + error.message);
+    return false;
+  }
 }
 
-function clearOperator(equipmentId) {
-  saveOperator(equipmentId, "");
-  const input = document.querySelector('[data-operator-id="' + CSS.escape(String(equipmentId)) + '"]');
-  if (input) input.value = "";
+async function clearOperator(equipmentId) {
+  if (!confirm("Энэ техникийн операторын нэрийг бүх төхөөрөмжөөс цэвэрлэх үү?")) return;
+  const ok = await saveOperator(equipmentId, "");
+  if (ok) { render(); showPage("eq"); }
+}
+
+async function importLocalOperators() {
+  const local = getLocalOperatorsForImport();
+  const rows = Object.entries(local).filter(([id,name]) => String(name || "").trim() && !getOperator(id));
+  if (!rows.length) { toast("Шилжүүлэх нэр олдсонгүй."); return; }
+  if (!confirm(rows.length + " операторын нэрийг Supabase-д шилжүүлэх үү? Одоо серверт байгаа нэрсийг солихгүй.")) return;
+  let count=0;
+  for (const [id,name] of rows) {
+    if (await saveOperator(id,name)) count++;
+  }
+  toast(count + " операторын нэр шилжлээ.");
+  render(); showPage("eq");
 }
 
 function allStatuses() {
@@ -385,7 +414,7 @@ function render() {
     '</div>';
 
   document.getElementById("eq").innerHTML =
-    '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small></div>' +
+    '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small><br><button id="importOperators" style="margin-top:8px">Энэ компьютерийн хуучин операторын нэрсийг шилжүүлэх</button></div>' +
     '<div class="grid">' +
     equipment.map(function(x) {
       const operator = getOperator(x.id);
@@ -672,7 +701,7 @@ function exportAll() {
   XLSX.writeFile(wb, "Data_Event_Buh_Medee.xlsx");
 }
 
-document.addEventListener("click", function(event) {
+document.addEventListener("click", async function(event) {
   const pageButton = event.target.closest("nav button[data-page]");
   if (pageButton) {
     showPage(pageButton.dataset.page);
@@ -708,9 +737,7 @@ document.addEventListener("click", function(event) {
 
   const clearButton = event.target.closest("[data-clear-operator-id]");
   if (clearButton) {
-    clearOperator(clearButton.dataset.clearOperatorId);
-    render();
-    showPage("eq");
+    await clearOperator(clearButton.dataset.clearOperatorId);
     return;
   }
 
@@ -718,6 +745,8 @@ document.addEventListener("click", function(event) {
     closeStatusModal();
     return;
   }
+
+  if (event.target.id === "importOperators") { await importLocalOperators(); return; }
 
   if (event.target.id === "exportHour") {
     exportHour();
@@ -732,8 +761,11 @@ document.addEventListener("click", function(event) {
   if (event.target.id === "exportDailyReport") { exportDailyReport(); return; }
 });
 
-document.addEventListener("input", function(event) {
-  if (event.target.matches("[data-operator-id]")) saveOperator(event.target.dataset.operatorId, event.target.value);
+document.addEventListener("change", async function(event) {
+  if (!event.target.matches("[data-operator-id]")) return;
+  const input=event.target;
+  const ok=await saveOperator(input.dataset.operatorId,input.value);
+  if (!ok) input.value=getOperator(input.dataset.operatorId);
 });
 
 document.addEventListener("change", function(event) {
