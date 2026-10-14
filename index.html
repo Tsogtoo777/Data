@@ -414,7 +414,7 @@ function render() {
     '</div>';
 
   document.getElementById("eq").innerHTML =
-    '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small><br><button id="importOperators" style="margin-top:8px">Энэ компьютерийн хуучин операторын нэрсийг шилжүүлэх</button></div>' +
+    '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small></div>' +
     '<div class="grid">' +
     equipment.map(function(x) {
       const operator = getOperator(x.id);
@@ -746,7 +746,6 @@ document.addEventListener("click", async function(event) {
     return;
   }
 
-  if (event.target.id === "importOperators") { await importLocalOperators(); return; }
 
   if (event.target.id === "exportHour") {
     exportHour();
