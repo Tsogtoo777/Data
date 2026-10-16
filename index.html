@@ -184,7 +184,7 @@ async function loadData() {
   try {
     equipment = await api("equipment?select=*&order=name");
     const statusRows = await api("status_types?select=name&order=id");
-    statuses = statusRows.map(function(row){ return row.name; });
+    statuses = statusRows.map(function(row){ return row.name; }).filter(function(name){ return name.endsWith("| ЭЦС"); });
 
     try {
       events = await api("equipment_events?select=equipment_id,status,start_time,end_time,operator_name,smu,km,comment&order=start_time.desc&limit=1000");
@@ -294,10 +294,10 @@ function needsComment(status) {
 
 function statusClass(status) {
   const s = String(status || "");
-  if (["Хүдэр олборлолт","Хөрс хуулалт","Ажиллаж байна"].includes(s)) return "status-working";
+  if (s === "Б Бүтээлтэй | ЭЦС") return "status-working";
   if (s.includes("засвар") || s.includes("Засвар") || s.includes("эвдрэл")) return "status-repair";
   if (s.includes("цахилгаан") || s.includes("Цахилгаан")) return "status-electric";
-  if (["Хүлээлт","Түлш авах","Ус авах"].includes(s)) return "status-wait";
+  if (["Ачуулах экскаватороо хүлээсэн | ЭЦС","Түлш авах хугацаа | ЭЦС","Усан хангамж | ЭЦС"].includes(s) || s.includes("хүлээлт")) return "status-wait";
   if (s.includes("шилжилт") || s.includes("шилжсэн") || s.includes("Ээлж")) return "status-shift";
   return "status-other";
 }
@@ -390,24 +390,19 @@ function showPage(page) {
 }
 
 function render() {
-  const workingStatuses = ["Хүдэр олборлолт","Хөрс хуулалт","Ажиллаж байна"];
-  const working = equipment.filter(function(x){ return workingStatuses.includes(x.current_status); }).length;
-  const ore = equipment.filter(function(x){ return x.current_status === "Хүдэр олборлолт"; }).length;
-  const waste = equipment.filter(function(x){ return x.current_status === "Хөрс хуулалт"; }).length;
+  const working = equipment.filter(function(x){ return x.current_status === "Б Бүтээлтэй | ЭЦС"; }).length;
 
   document.getElementById("dash").innerHTML =
     '<div class="stats">' +
       '<div class="stat">Нийт техник<b>' + equipment.length + '</b></div>' +
       '<div class="stat">Ажиллаж буй<b>' + working + '</b></div>' +
-      '<div class="stat">Хүдэр<b>' + ore + '</b></div>' +
-      '<div class="stat">Хөрс<b>' + waste + '</b></div>' +
     '</div>' +
     '<div class="card"><b>Одоогийн төлөв</b>' +
     equipment.map(function(x) {
       return '<div class="log">' +
         '<b>' + esc(x.name) + '</b>' +
         '<span>' + esc(getOperator(x.id) || "-") + '</span>' +
-        '<span><span class="status-chip ' + statusClass(x.current_status || "Нөөцөнд зогссон") + '">' + esc(x.current_status || "Нөөцөнд зогссон") + '</span></span>' +
+        '<span><span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span></span>' +
         '<span>' + fmt(x.updated_at || x.created_at) + '</span>' +
       '</div>';
     }).join("") +
@@ -425,7 +420,7 @@ function render() {
           '<input data-operator-id="' + esc(x.id) + '" value="' + esc(operator) + '" placeholder="Операторын нэр">' +
           '<button data-clear-operator-id="' + esc(x.id) + '">Цэвэрлэх</button>' +
         '</div>' +
-        '<div class="current"><small>Одоогийн төлөв</small><br><span class="status-chip ' + statusClass(x.current_status || "Нөөцөнд зогссон") + '">' + esc(x.current_status || "Нөөцөнд зогссон") + '</span></div>' +
+        '<div class="current"><small>Одоогийн төлөв</small><br><span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span></div>' +
         '<button class="status-trigger" data-open-status="' + esc(x.id) + '">Төлөв сонгох ▾</button>' +
       '</div>';
     }).join("") +
