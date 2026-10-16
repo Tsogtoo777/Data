@@ -105,7 +105,8 @@ select option{background:#101010;color:var(--mak-orange)}
       <button id="closeModal">✕</button>
     </div>
     <div id="statusStep">
-      <small>Төлөвөө сонгоно уу.</small>
+      <small id="statusStepHint">Эхлээд ангиллаа сонгоно уу.</small>
+      <div id="statusCategoryBack" style="display:none;margin:10px 0"><button type="button" data-back-categories>← Ангилал руу буцах</button></div>
       <div class="modal-grid" id="modalStatuses"></div>
     </div>
     <div id="eventDetailStep" style="display:none">
@@ -286,6 +287,40 @@ function statusClass(status) {
   return "status-other";
 }
 
+// Зөвхөн дэлгэцийн ангилал: Supabase дахь төлөвийн нэрсийг өөрчлөхгүй.
+const STATUS_CATEGORIES = [
+  "Норматив",
+  "Ашиглалтаас шалтгаалсан",
+  "Эвдрэлээс шалтгаалсан",
+  "Хангамжаас шалтгаалсан",
+  "Гадны нөлөөтэй"
+];
+function statusCategory(status) {
+  const s = String(status || "").toLowerCase();
+  if (/амралт|цайны цаг|унтлагын|ээлж солилцох|түлш авах хугацаа|усан хангамж|ус хангамж|операторын тойрох үзлэг|төлөвлөгөөний дагуу ажиллахгүй|бэлэн нөөцөнд|хувийн цаг/.test(s)) return 0;
+  if (/сэлбэггүй|сэлбэг хүлээлт|хангамжаас|түлш, тосгүй|үйлчилгээний машин дутагдалтай|тосолгоо хүлээлт|хорших техник дутагдалтай/.test(s)) return 3;
+  if (/цаг агаар|тэсэлгээ|цахилгаан тасралт|дэд бүтэцийн цахилгааны|улсын байгууллага|захиргааны шийдвэрээр/.test(s)) return 4;
+  if (/засвар|эвдрэл|гэмтэл|механик|гидрийн|хөдөлгүүр|тормоз|хүч дамжуулах|хөргөлт|халаалтын|гагнуур|явах анги|хийн систем|дугуй|түлшний систем|тосолгооны систем|асаалтын систем|усны систем|агаарын систем|ажлын багаж|удирдлагын систем|кабин|шат тавцан|цамхаг|цахилгаан систем|цахилгаанчин|түргэн элэгдэх|техник үйлчилгээ|гэрээт|станц харилцаа/.test(s)) return 2;
+  return 1;
+}
+function showStatusCategories() {
+  document.getElementById("statusCategoryBack").style.display = "none";
+  document.getElementById("statusStepHint").textContent = "Эхлээд ангиллаа сонгоно уу.";
+  document.getElementById("modalStatuses").innerHTML = STATUS_CATEGORIES.map(function(name, index) {
+    const count = allStatuses().filter(function(status){ return statusCategory(status) === index; }).length;
+    return '<button type="button" data-status-category="' + index + '">' + esc(name) + ' (' + count + ')</button>';
+  }).join("");
+}
+function showStatusCategory(index) {
+  const item = equipment.find(function(x){ return String(x.id) === String(selectedEquipmentId); });
+  document.getElementById("statusCategoryBack").style.display = "block";
+  document.getElementById("statusStepHint").textContent = STATUS_CATEGORIES[index] + " — төлөвөө сонгоно уу.";
+  document.getElementById("modalStatuses").innerHTML = allStatuses().filter(function(status){
+    return statusCategory(status) === index;
+  }).map(function(status){
+    return '<button type="button" class="' + (item && item.current_status === status ? "active " : "") + statusClass(status) + '" data-modal-status="' + esc(status) + '">' + esc(status) + '</button>';
+  }).join("");
+}
 function openStatusModal(equipmentId) {
   const item = equipment.find(function(x){ return String(x.id) === String(equipmentId); });
   if (!item) return;
@@ -294,9 +329,7 @@ function openStatusModal(equipmentId) {
   document.getElementById("modalTitle").textContent = item.name + " — Төлөв өөрчлөх";
   document.getElementById("statusStep").style.display = "block";
   document.getElementById("eventDetailStep").style.display = "none";
-  document.getElementById("modalStatuses").innerHTML = allStatuses().map(function(status){
-    return '<button class="' + (item.current_status === status ? "active " : "") + statusClass(status) + '" data-modal-status="' + esc(status) + '">' + esc(status) + '</button>';
-  }).join("");
+  showStatusCategories();
   document.getElementById("statusModal").classList.add("open");
 }
 
@@ -690,6 +723,16 @@ document.addEventListener("click", async function(event) {
   const openButton = event.target.closest("[data-open-status]");
   if (openButton) {
     openStatusModal(openButton.dataset.openStatus);
+    return;
+  }
+
+  const categoryButton = event.target.closest("[data-status-category]");
+  if (categoryButton && selectedEquipmentId !== null) {
+    showStatusCategory(Number(categoryButton.dataset.statusCategory));
+    return;
+  }
+  if (event.target.closest("[data-back-categories]")) {
+    showStatusCategories();
     return;
   }
 
