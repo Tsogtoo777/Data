@@ -212,22 +212,6 @@ async function loadData() {
   }
 }
 
-const EXTRA_STATUSES = [
-  "Ээлж эхэлсэн",
-  "Ээлж дууссан",
-  "Гадны ажил",
-  "Хорших Текник бусад ажил",
-  "Хүлээлт",
-  "Хорших Текник шилжсэн",
-  "Оператор тойрох үзлэг",
-  "Маркшейдераас шалтгаалсан зогсолт",
-  "Геологи шалтгаалсан зогсолт",
-  "Тос тосолгоо",
-  "Тос тослох материал",
-  "Экскаватор төлөвлөгөөт засварт зогссон",
-  "Уул технологийн хүндрэл"
-];
-
 function getLocalOperatorsForImport() {
   try { return JSON.parse(localStorage.getItem("data_event_operators") || "{}"); }
   catch (_) { return {}; }
@@ -276,7 +260,7 @@ async function importLocalOperators() {
 }
 
 function allStatuses() {
-  return Array.from(new Set(statuses.concat(EXTRA_STATUSES)));
+  return Array.from(new Set(statuses));
 }
 
 let selectedEquipmentId = null;
