@@ -199,6 +199,7 @@ async function loadData() {
     } catch (_) {
       productionLogs = [];
     }
+    try {blockLocations=await api('equipment_block_locations?select=*');}catch(_){blockLocations=[];}
     // Operator names are shared in Supabase, not browser storage.
     const operatorRows = await api("equipment_operator_names?select=equipment_id,operator_name");
     sharedOperators = Object.fromEntries(operatorRows.map(row => [String(row.equipment_id), String(row.operator_name || "")]));
@@ -598,6 +599,33 @@ function is830(item) {
 function isDrill(item) {
   return /өрөм|дрилл|drill/i.test(String((item && item.name) || "") + " " + String((item && item.equipment_type) || "")) || /410[- ]?0?[12]/i.test(String((item && item.name) || ""));
 }
+// Block/level tracking (requires separate reviewed SQL migration).
+let blockLocations = [];
+function isExcavator(item){return !!item && /pc\s*3000|pc\s*4000|экскаватор|excavator/i.test(String(item.name||'')+' '+String(item.equipment_type||''));}
+function locationEquipment(item){return isDrill(item)||isExcavator(item);}
+function locationFor(id){return blockLocations.find(x=>String(x.equipment_id)===String(id));}
+function blockFields(item){
+ if(!locationEquipment(item))return '';
+ const loc=locationFor(item.id);
+ return '<div class="card" style="grid-column:1/-1"><b>Ажлын байршил · '+esc(item.name)+'</b><p><small>Одоогийн: '+esc(loc?.block_code||'Тодорхойгүй')+' · '+esc(loc?.level_name||'Түвшин тодорхойгүй')+'</small></p>'+
+ '<div class="form-grid"><label>Шинэ блок<input id="newBlock" placeholder="BL30" value="'+esc(loc?.block_code||'')+'"></label><label>Шинэ түвшин<input id="newLevel" placeholder="970–960" value="'+esc(loc?.level_name||'')+'"></label></div>'+
+ '<button type="button" id="confirmBlockChange">Блок / түвшин солих · баталгаажуулах</button></div>';
+}
+async function changeBlock(){
+ const item=equipment.find(x=>String(x.id)===String(document.getElementById('productionEquipment')?.value));
+ if(!locationEquipment(item))return toast('Зөвхөн өрөм, экскаваторт байршил тохируулна.');
+ const block=(document.getElementById('newBlock')?.value||'').trim().toUpperCase(), level=(document.getElementById('newLevel')?.value||'').trim();
+ if(!/^BL[0-9]+[A-ZА-ЯӨҮ0-9-]*$/i.test(block)||!level)return toast('Блокийг BL30 хэлбэрээр, түвшинг бөглөнө үү.');
+ const old=locationFor(item.id);
+ if(old?.block_code===block&&old?.level_name===level)return toast('Байршил өөрчлөгдөөгүй байна.');
+ if(!confirm(item.name+'\nӨмнөх: '+(old?.block_code||'—')+' / '+(old?.level_name||'—')+'\nШинэ: '+block+' / '+level+'\n\nБаталгаажуулж хадгалах уу?'))return;
+ try{
+  // History first, then current location. Both operations require authorized RLS policies.
+  await api('equipment_block_history',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({equipment_id:item.id,old_block:old?.block_code||null,old_level:old?.level_name||null,new_block:block,new_level:level})});
+  await api('equipment_block_locations?on_conflict=equipment_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({equipment_id:item.id,block_code:block,level_name:level,updated_at:new Date().toISOString()})});
+  blockLocations=await api('equipment_block_locations?select=*');renderProduction();toast('Блок, түвшин хадгалагдлаа.');
+ }catch(e){toast('Байршил хадгалах алдаа: '+e.message+' (түүхийн мөр үүссэн байж болно)');}
+}
 const MATERIAL_TYPES = ["Хөрс", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Бусад", "Замын дэвсэлт", "Шимт хөрс"];
 function renderProduction() {
   const day = document.getElementById("productionDate")?.value || localDateValue();
@@ -609,6 +637,7 @@ function renderProduction() {
   const dumpOptions = '<option value="">Экскаватор сонгох (заавал биш)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
   const materialOptions = '<option value="">Материал сонгох</option>' + MATERIAL_TYPES.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("");
   const filtered = productionLogs.filter(x => x.production_date === day && Number(x.hour_slot) === hour);
+  const locationTarget=is830(currentItem)?equipment.find(x=>String(x.id)===String(document.getElementById("productionDump")?.value)):currentItem;
   document.getElementById("production").innerHTML =
     '<div class="card"><b>Цагийн бүтээлийн бүртгэл</b><p><small>Өрмийн бүтээлийг тууш метрээр, 830 техникийн бүтээлийг рейсээр бүртгэнэ. 830 дээр материалын төрлийг сонгоно.</small></p>'+
     '<div class="form-grid"><label>Огноо<input id="productionDate" type="date" value="'+esc(day)+'"></label>'+
@@ -618,6 +647,7 @@ function renderProduction() {
     (isDrill(currentItem) ? '<label>Цооногийн тоо<input id="productionHoleCount" type="number" min="0" step="1" placeholder="Жишээ: 3"></label><label>Өрмийн ажлын төрөл<select id="productionType"><option value="Өрмийн бүтээл">Өрмийн бүтээл</option><option value="Сэргээлт">Сэргээлт</option></select></label>' : '')+
     (is830(currentItem) ? '<label>Материалын төрөл<select id="productionMaterial" required>'+materialOptions+'</select></label>' : '')+
     (is830(currentItem) ? '<label>Ачуулсан экскаватор<select id="productionDump">'+dumpOptions+'</select></label>' : '')+'</div>'+
+    blockFields(currentItem)+
     '<label style="display:block;margin-top:8px">Тайлбар<input id="productionComment" placeholder="Нэмэлт тайлбар (заавал биш)"></label>'+
     '<button class="primary" id="saveProduction" style="margin-top:10px">Бүтээл хадгалах</button></div>'+
     '<div class="card"><b>'+esc(day)+' · '+String(hour).padStart(2,"0")+':00 цагийн бүртгэл</b>'+
@@ -635,7 +665,12 @@ async function saveProduction() {
   const holeInput = document.getElementById("productionHoleCount");
   const holeCount = holeInput && holeInput.value !== "" ? Number(holeInput.value) : null;
   if (isDrill(item) && (holeCount === null || !Number.isInteger(holeCount) || holeCount < 0)) return toast("Цооногийн тоог бүхэл тоогоор оруулна уу.");
+  const locTarget=is830(item)?equipment.find(x=>String(x.id)===String(document.getElementById('productionDump')?.value)):item;
+  const loc=locationEquipment(locTarget)?locationFor(locTarget.id):null;
+  if(locationEquipment(locTarget)&&!loc?.block_code)return toast('Бүтээл хадгалахаас өмнө блок, түвшинг баталгаажуулна уу.');
+  if(is830(item)&&!locTarget)return toast('Блоктой холбохын тулд ачуулсан экскаваторыг сонгоно уу.');
   const row = {
+    block_code:loc?.block_code||null, level_name:loc?.level_name||null,
     production_date: day, hour_slot: hour, equipment_id: item.id,
     measure_type: equipmentMeasure(item), amount: amount,
     hole_count: isDrill(item) ? holeCount : null,
@@ -877,6 +912,7 @@ document.addEventListener("click", async function(event) {
     exportAll();
     return;
   }
+  if (event.target.id === "confirmBlockChange") { changeBlock(); return; }
   if (event.target.id === "saveProduction") { saveProduction(); return; }
   if (event.target.id === "exportDailyReport") { exportDailyReport(); return; }
 });
