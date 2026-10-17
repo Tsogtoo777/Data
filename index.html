@@ -735,6 +735,7 @@ async function saveProduction() {
   const hour = Number(document.getElementById("productionHour")?.value);
   if (!item) return toast("Техникээ сонгоно уу.");
   if (!Number.isFinite(amount) || amount < 0 || document.getElementById("productionAmount").value === "") return toast("Бүтээлийн хэмжээг зөв оруулна уу.");
+  if (is830(item) && !Number.isInteger(amount)) return toast("БелАЗ-ийн рейсийн тоо бүхэл тоо байх ёстой.");
   if (is830(item) && !document.getElementById("productionMaterial")?.value) return toast("830 техникийн материалын төрлийг сонгоно уу.");
   const holeInput = document.getElementById("productionHoleCount");
   const holeCount = holeInput && holeInput.value !== "" ? Number(holeInput.value) : null;
@@ -758,7 +759,7 @@ async function saveProduction() {
     hole_count: isDrill(item) ? holeCount : null,
     production_type: isDrill(item) ? (document.getElementById("productionType")?.value || "Өрмийн бүтээл") : null,
     operator_name: null,
-    dump_equipment_id: document.getElementById("productionDump")?.value || null,
+    dump_equipment_id: is830(item) ? (document.getElementById("productionDump")?.value || null) : null,
     material_type: is830(item) ? (document.getElementById("productionMaterial")?.value || null) : null,
     comment: document.getElementById("productionComment").value.trim() || null
   };
