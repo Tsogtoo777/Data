@@ -106,6 +106,7 @@ select option{background:#101010;color:var(--mak-orange)}
     </div>
     <div id="statusStep">
       <small id="statusStepHint">Эхлээд ангиллаа сонгоно уу.</small>
+      <input id="statusSearch" type="search" autocomplete="off" placeholder="🔎 Төлөвийн нэрээр хайх (жишээ: гидр, сэлбэг, IT)" aria-label="Төлөв хайх" style="margin:10px 0">
       <div id="statusCategoryBack" style="display:none;margin:10px 0"><button type="button" data-back-categories>← Ангилал руу буцах</button></div>
       <div class="modal-grid" id="modalStatuses"></div>
     </div>
@@ -384,13 +385,27 @@ const STATUS_GROUPS = [
   ]
 ];
 function statusCategory(status) { return STATUS_GROUPS.findIndex(group => group.includes(status)); }
+function operatorOptionalForStatus(status) { return [2, 3].includes(statusCategory(status)); }
 function showStatusCategories() {
+  const search = document.getElementById("statusSearch");
+  if (search && search.value.trim()) { showStatusSearchResults(); return; }
   document.getElementById("statusCategoryBack").style.display = "none";
   document.getElementById("statusStepHint").textContent = "Эхлээд ангиллаа сонгоно уу.";
   document.getElementById("modalStatuses").innerHTML = STATUS_CATEGORIES.map(function(name, index) {
     const count = allStatuses().filter(function(status){ return statusCategory(status) === index || (index === 3 && statusCategory(status) === -1); }).length;
     return '<button type="button" data-status-category="' + index + '">' + esc(name) + ' (' + count + ')</button>';
   }).join("");
+}
+function showStatusSearchResults() {
+  const query = document.getElementById("statusSearch").value.trim().toLocaleLowerCase();
+  if (!query) { showStatusCategories(); return; }
+  const item = equipment.find(function(x){ return String(x.id) === String(selectedEquipmentId); });
+  const matches = allStatuses().filter(function(status){ return status.toLocaleLowerCase().includes(query); });
+  document.getElementById("statusCategoryBack").style.display = "block";
+  document.getElementById("statusStepHint").textContent = "Хайлтын үр дүн: " + matches.length + " төлөв";
+  document.getElementById("modalStatuses").innerHTML = matches.length ? matches.map(function(status){
+    return '<button type="button" class="' + (item && item.current_status === status ? "active " : "") + statusClass(status) + '" data-modal-status="' + esc(status) + '">' + esc(status) + '</button>';
+  }).join("") : '<div class="current">Ийм нэртэй төлөв олдсонгүй.</div>';
 }
 function showStatusCategory(index) {
   const item = equipment.find(function(x){ return String(x.id) === String(selectedEquipmentId); });
@@ -410,6 +425,7 @@ function openStatusModal(equipmentId) {
   document.getElementById("modalTitle").textContent = item.name + " — Төлөв өөрчлөх";
   document.getElementById("statusStep").style.display = "block";
   document.getElementById("eventDetailStep").style.display = "none";
+  document.getElementById("statusSearch").value = "";
   showStatusCategories();
   document.getElementById("statusModal").classList.add("open");
 }
@@ -437,7 +453,7 @@ async function setStatus(equipmentId, status, details) {
   const item = equipment.find(function(x){ return String(x.id) === String(equipmentId); });
   if (!item) { toast("Техник олдсонгүй."); return; }
   const operator = getOperator(equipmentId);
-  if (!operator) {
+  if (!operator && !operatorOptionalForStatus(status)) {
     toast("Эхлээд энэ техникийн операторыг оруулна уу.");
     closeStatusModal();
     const input = document.querySelector('[data-operator-id="' + CSS.escape(String(equipmentId)) + '"]');
@@ -456,7 +472,7 @@ async function setStatus(equipmentId, status, details) {
     await api("equipment_events", {
       method:"POST", headers:{"Prefer":"return=minimal"},
       body:JSON.stringify({
-        equipment_id:equipmentId, status:status, start_time:now, operator_name:operator,
+        equipment_id:equipmentId, status:status, start_time:now, operator_name:operator || null,
         smu: needsSmu(status) && String(d.smu ?? "").trim() !== "" ? Number(d.smu) : null,
         km: needsSmu(status) && String(d.km ?? "").trim() !== "" ? Number(d.km) : null,
         comment: String(d.comment || "").trim() || null
@@ -793,6 +809,8 @@ function exportAll() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productionRows.length ? productionRows : [{"Мэдээлэл":"Бүтээлийн мэдээ алга"}]), "Бүтээлийн мэдээ");
   XLSX.writeFile(wb, "Data_Event_Buh_Medee.xlsx");
 }
+
+document.getElementById("statusSearch").addEventListener("input", showStatusSearchResults);
 
 document.addEventListener("click", async function(event) {
   const pageButton = event.target.closest("nav button[data-page]");
