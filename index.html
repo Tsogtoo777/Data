@@ -73,6 +73,10 @@ select option{background:#101010;color:var(--mak-orange)}
 .err{background:#281414;border-color:#813737;color:#ffb4a2}
 .status-working,.status-repair,.status-electric,.status-wait,.status-shift,.status-other{font-weight:700}
 @media(max-width:650px){header{padding:9px 10px}.header-logo{width:clamp(88px,24vw,140px);max-height:46px}h1{font-size:18px}}
+.equipment-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0 16px}
+.equipment-tabs button{font-weight:700;padding:12px 5px}
+.equipment-tabs button.active{background:var(--mak-orange);color:#111;border-color:var(--mak-orange)}
+@media(max-width:650px){.equipment-tabs{gap:4px}.equipment-tabs button{font-size:12px;padding:10px 2px}}
 </style>
 </head>
 <body>
@@ -504,6 +508,19 @@ function showPage(page) {
   if (page === "report") renderReport();
 }
 
+let activeEquipmentGroup = "excavator";
+function equipmentGroup(item) {
+  if (isExcavator(item)) return "excavator";
+  if (isDrill(item)) return "drill";
+  if (/белаз|belaz|автосамосвал|самосвал|dump|komatsu\s*830|830e|930e|980e/i.test(String(item.name||"")+" "+String(item.equipment_type||""))) return "truck";
+  return "other";
+}
+function equipmentGroupTabs() {
+  const groups = [["excavator","Экска"],["truck","БелАЗ"],["drill","Өрөм"],["other","Бусад"]];
+  return '<div class="equipment-tabs" role="group" aria-label="Техникийн ангилал">' + groups.map(([key,label]) =>
+    '<button type="button" data-equipment-group="'+key+'" class="'+(activeEquipmentGroup===key?'active':'')+'">'+label+' ('+equipment.filter(x=>equipmentGroup(x)===key).length+')</button>'
+  ).join('') + '</div>';
+}
 function render() {
   const working = equipment.filter(function(x){ return x.current_status === "Б Бүтээлтэй | ЭЦС"; }).length;
 
@@ -525,8 +542,9 @@ function render() {
 
   document.getElementById("eq").innerHTML =
     '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small></div>' +
+    equipmentGroupTabs() +
     '<div class="grid">' +
-    equipment.map(function(x) {
+    equipment.filter(function(x){return equipmentGroup(x)===activeEquipmentGroup;}).map(function(x) {
       const operator = getOperator(x.id);
       return '<div class="eq">' +
         '<div class="name">' + esc(x.name) + '</div>' +
@@ -638,11 +656,15 @@ async function changeBlock(equipmentId){
  }catch(e){toast('Байршил хадгалах алдаа: '+e.message+' (түүхийн мөр үүссэн байж болно)');}
 }
 const MATERIAL_TYPES = ["Хөрс", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Бусад", "Замын дэвсэлт", "Шимт хөрс"];
+let activeProductionGroup = "truck";
+function productionGroup(item){return is830(item)?"truck":isDrill(item)?"drill":null;}
 function renderProduction() {
   const day = document.getElementById("productionDate")?.value || localDateValue();
   const hour = Number(document.getElementById("productionHour")?.value ?? new Date().getHours());
-  const selected = document.getElementById("productionEquipment")?.value || "";
-  const itemOptions = equipment.map(x => '<option value="'+esc(x.id)+'"'+(String(x.id)===String(selected)?" selected":"")+'>'+esc(x.name)+' — '+esc(equipmentMeasure(x))+'</option>').join("");
+  const allowed = equipment.filter(x=>productionGroup(x)===activeProductionGroup);
+  const previous = document.getElementById("productionEquipment")?.value || "";
+  const selected = allowed.some(x=>String(x.id)===String(previous)) ? previous : String(allowed[0]?.id ?? "");
+  const itemOptions = allowed.map(x => '<option value="'+esc(x.id)+'"'+(String(x.id)===String(selected)?" selected":"")+'>'+esc(x.name)+' — '+esc(equipmentMeasure(x))+'</option>').join("");
   const currentItem = equipment.find(x => String(x.id) === String(selected));
   const excavators = equipment.filter(x => /pc\s*3000|pc\s*4000/i.test(String(x.name || "")) || /экскаватор|excavator/i.test(String(x.name || "") + " " + String(x.equipment_type || "")));
   const dumpOptions = '<option value="">Экскаватор сонгох (заавал биш)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
@@ -651,6 +673,9 @@ function renderProduction() {
   const locationTarget=is830(currentItem)?equipment.find(x=>String(x.id)===String(document.getElementById("productionDump")?.value)):currentItem;
   document.getElementById("production").innerHTML =
     '<div class="card"><b>Цагийн бүтээлийн бүртгэл</b><p><small>Өрмийн бүтээлийг тууш метрээр, 830 техникийн бүтээлийг рейсээр бүртгэнэ. 830 дээр материалын төрлийг сонгоно.</small></p>'+
+    '<div class="production-tabs" style="display:flex;gap:8px;margin:12px 0">'+
+    '<button type="button" data-production-group="truck" class="'+(activeProductionGroup==='truck'?'primary':'')+'">БелАЗ</button>'+
+    '<button type="button" data-production-group="drill" class="'+(activeProductionGroup==='drill'?'primary':'')+'">Өрөм</button></div>'+
     '<div class="form-grid"><label>Огноо<input id="productionDate" type="date" value="'+esc(day)+'"></label>'+
     '<label>Цаг<select id="productionHour">'+Array.from({length:24},(_,i)=>'<option value="'+i+'"'+(i===hour?' selected':'')+'>'+String(i).padStart(2,"0")+':00–'+String((i+1)%24).padStart(2,"0")+':00</option>').join("")+'</select></label>'+
     '<label>Техник<select id="productionEquipment">'+itemOptions+'</select></label>'+
@@ -658,7 +683,6 @@ function renderProduction() {
     (isDrill(currentItem) ? '<label>Цооногийн тоо<input id="productionHoleCount" type="number" min="0" step="1" placeholder="Жишээ: 3"></label><label>Өрмийн ажлын төрөл<select id="productionType"><option value="Өрмийн бүтээл">Өрмийн бүтээл</option><option value="Сэргээлт">Сэргээлт</option></select></label>' : '')+
     (is830(currentItem) ? '<label>Материалын төрөл<select id="productionMaterial" required>'+materialOptions+'</select></label>' : '')+
     (is830(currentItem) ? '<label>Ачуулсан экскаватор<select id="productionDump">'+dumpOptions+'</select></label>' : '')+'</div>'+
-    blockFields(currentItem)+
     '<label style="display:block;margin-top:8px">Тайлбар<input id="productionComment" placeholder="Нэмэлт тайлбар (заавал биш)"></label>'+
     '<button class="primary" id="saveProduction" style="margin-top:10px">Бүтээл хадгалах</button></div>'+
     '<div class="card"><b>'+esc(day)+' · '+String(hour).padStart(2,"0")+':00 цагийн бүртгэл</b>'+
@@ -926,6 +950,8 @@ document.addEventListener("click", async function(event) {
   const changeLocation = event.target.closest('[data-change-block]');
   if (changeLocation) { changeBlock(changeLocation.dataset.changeBlock); return; }
   if (event.target.id === "confirmBlockChange") { changeBlock(); return; }
+  const prodGroup = event.target.closest("[data-production-group]");
+  if (prodGroup) { activeProductionGroup=prodGroup.dataset.productionGroup; renderProduction(); return; }
   if (event.target.id === "saveProduction") { saveProduction(); return; }
   if (event.target.id === "exportDailyReport") { exportDailyReport(); return; }
 });
@@ -944,6 +970,13 @@ document.addEventListener("change", function(event) {
 });
 
 loadData();
+
+document.addEventListener("click", function(event) {
+  const button = event.target.closest("[data-equipment-group]");
+  if (!button) return;
+  activeEquipmentGroup = button.dataset.equipmentGroup;
+  render();
+});
 </script>
 </body>
 </html>
