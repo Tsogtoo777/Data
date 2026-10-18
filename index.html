@@ -636,19 +636,29 @@ function productionSlotMode(day,hour,now=new Date()){
  if(slot.getTime()>now.getTime())throw Error('Ирээдүйн цагт бүтээл бүртгэхгүй.');
  return day===mnDay(now)&&hour===Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',hour:'2-digit',hourCycle:'h23'}).format(now))?'current':'historical';
 }
-function historicalProductionFields(day,hour){
+function historicalProductionFields(day,hour,target){
  let mode;try{mode=productionSlotMode(day,hour);}catch(e){return '<p role="alert">'+esc(e.message)+'</p>';}
  if(mode!=='historical')return '';
+ const loc=locationFor(target?.id)||{};
  const blocks=[...new Set([...productionLogs,...blockLocations].map(x=>x.block_code).filter(Boolean))];
  const levels=[...new Set([...productionLogs,...blockLocations].map(x=>x.level_name).filter(Boolean))];
- return '<fieldset style="margin-top:12px;border:1px solid #ff6b1b;border-radius:10px;padding:12px"><legend>Өмнөх цагийн ажлын байршил</legend>'+
- '<p><small>Энэ цагт ажилласан бодит блок, түвшинг оруулна. Одоогийн байршлыг автоматаар авахгүй.</small></p>'+
- '<div class="form-grid"><label>Тухайн үеийн блок<input id="productionHistoricalBlock" list="productionBlockChoices" placeholder="Жишээ: BL42" autocomplete="off" maxlength="40" required></label>'+
- '<label>Тухайн үеийн түвшин<input id="productionHistoricalLevel" list="productionLevelChoices" placeholder="Жишээ: 980–970" autocomplete="off" maxlength="80" required></label></div>'+
+ return '<fieldset style="margin-top:12px;border:1px solid #ff6b1b;border-radius:10px;padding:12px"><legend>Ажлын байршил</legend>'+
+ '<p><small>Сонгосон техникийн одоогийн байршлаас автоматаар бөглөв. Өмнөх цагт өөр байршилтай байсан бол засна уу.</small></p>'+
+ '<div class="form-grid"><label>Блок<input value="'+esc(loc.block_code||'')+'" id="productionHistoricalBlock" list="productionBlockChoices" placeholder="Жишээ: BL42" autocomplete="off" maxlength="40" required></label>'+
+ '<label>Түвшин<input value="'+esc(loc.level_name||'')+'" id="productionHistoricalLevel" list="productionLevelChoices" placeholder="Жишээ: 980–970" autocomplete="off" maxlength="80" required></label></div>'+
  '<datalist id="productionBlockChoices">'+blocks.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>'+
  '<datalist id="productionLevelChoices">'+levels.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>'+
- '<small>Жагсаалтын утгууд нь зөвхөн санал. Тухайн цагийн байршлыг шалгаж сонгоно уу.</small></fieldset>';
+ '<small>Энд зассан байршил зөвхөн нэмэх бүтээлд хамаарна.</small></fieldset>';
 }
+function syncProductionLocation(){
+ const item=equipment.find(x=>String(x.id)===String(document.getElementById('productionEquipment')?.value));
+ const target=is830(item)?equipment.find(x=>String(x.id)===String(document.getElementById('productionDump')?.value)):item;
+ const loc=locationFor(target?.id)||{};
+ const block=document.getElementById('productionHistoricalBlock'),level=document.getElementById('productionHistoricalLevel');
+ if(block)block.value=loc.block_code||'';if(level)level.value=loc.level_name||'';
+}
+document.addEventListener('change',event=>{if(event.target.id==='productionDump')syncProductionLocation();});
+
 function historicalProductionLocation(block,level){
  block=String(block||'').trim().toUpperCase();level=String(level||'').trim();
  if(!/^BL[0-9]+[A-ZА-ЯӨҮ0-9-]*$/i.test(block)||block.length>40||!level||level.length>80)throw Error('Тухайн үеийн блокийг BL42 хэлбэрээр, түвшинг заавал бөглөнө үү.');
@@ -672,8 +682,10 @@ function renderProduction() {
   const itemOptions = allowed.map(x => '<option value="'+esc(x.id)+'"'+(String(x.id)===String(selected)?" selected":"")+'>'+esc(x.name)+' — '+esc(equipmentMeasure(x))+'</option>').join("");
   const currentItem = equipment.find(x => String(x.id) === String(selected));
   const excavators = equipment.filter(x => /pc\s*3000|pc\s*4000/i.test(String(x.name || "")) || /экскаватор|excavator/i.test(String(x.name || "") + " " + String(x.equipment_type || "")));
-  const dumpOptions = '<option value="">Ачуулсан экскаватор сонгох (заавал)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");
-  const materialOptions = '<option value="">Материал сонгох</option>' + MATERIAL_TYPES.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("");
+  const priorDump=document.getElementById('productionDump')?.value||'';
+  const priorMaterial=document.getElementById('productionMaterial')?.value||'';
+  const dumpOptions = '<option value="">Ачуулсан экскаватор сонгох (заавал)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'"'+(String(x.id)===String(priorDump)?' selected':'')+'>'+esc(x.name)+'</option>').join("");
+  const materialOptions = '<option value="">Материал сонгох</option>' + MATERIAL_TYPES.map(x=>'<option value="'+esc(x)+'"'+(x===priorMaterial?' selected':'')+'>'+esc(x)+'</option>').join("");
   const filtered = productionLogs.filter(x => x.production_date === day && Number(x.hour_slot) === hour);
   const locationTarget=is830(currentItem)?equipment.find(x=>String(x.id)===String(document.getElementById("productionDump")?.value)):currentItem;
   document.getElementById("production").innerHTML =
@@ -688,7 +700,7 @@ function renderProduction() {
     (isDrill(currentItem) ? '<label>Цооногийн тоо<input id="productionHoleCount" type="number" min="0" step="1" placeholder="Жишээ: 3"></label><label>Өрмийн ажлын төрөл<select id="productionType"><option value="Өрмийн бүтээл">Өрмийн бүтээл</option><option value="Сэргээлт">Сэргээлт</option></select></label>' : '')+
     (is830(currentItem) ? '<label>Материалын төрөл<select id="productionMaterial" required>'+materialOptions+'</select></label>' : '')+
     (is830(currentItem) ? '<label>Ачуулсан экскаватор<select id="productionDump">'+dumpOptions+'</select></label>' : '')+'</div>'+
-    historicalProductionFields(day,hour)+
+    historicalProductionFields(day,hour,locationTarget)+
     '<label style="display:block;margin-top:8px">Тайлбар<input id="productionComment" placeholder="Нэмэлт тайлбар (заавал биш)"></label>'+
     '<button class="primary" id="saveProduction" style="margin-top:10px">Бүтээл хадгалах</button></div>'+
     '<div class="card"><b>'+esc(day)+' · '+String(hour).padStart(2,"0")+':00 цагийн бүртгэл</b>'+
@@ -714,10 +726,6 @@ async function saveProductionOnce() {
   let loc;
   if(mode==='historical'){
     loc=historicalProductionLocation(document.getElementById('productionHistoricalBlock')?.value,document.getElementById('productionHistoricalLevel')?.value);
-    const text='Өмнөх цагийн бүтээл нэмэх\n'+day+' · '+String(hour).padStart(2,'0')+':00–'+String((hour+1)%24).padStart(2,'0')+':00 (UTC+8)\n'
-      +item.name+' · '+amount+' '+equipmentMeasure(item)+'\nБайршлын техник: '+locTarget.name+'\nБлок: '+loc.block_code+' · Түвшин: '+loc.level_name
-      +'\n\nЭнэ цагийн бодит байршил, бүтээл зөв гэдгийг баталгаажуулж хадгалах уу?\nӨмнөх бүртгэл болон техникийн одоогийн байршлыг өөрчлөхгүй.';
-    if(!confirm(text))return;
   }else{
     loc=locationFor(locTarget.id);
     if(!loc?.block_code || !String(loc.level_name||'').trim())return toast('Бүтээл хадгалахаас өмнө блок болон түвшинг хоёуланг баталгаажуулна уу.');
