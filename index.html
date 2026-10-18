@@ -155,6 +155,18 @@ select option{background:#101010;color:var(--mak-orange)}
   </div>
 </div>
 
+<script>(function(root){
+'use strict';
+const norm=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/рс/g,'pc').replace(/[\s/_-]/g,'');
+function family(text){
+ const s=norm(text);
+ for(const [key,re] of [['pc3000',/pc3000/],['pc4000',/pc4000/],['830',/830/],['wa900',/wa900/],['cat16m',/(?:сат|cat)(?:grader|автогрейдер)?16[мm]|автогрейдер|grader/],['dozer',/бульдозер|bulldozer|dozer/]])if(re.test(s))return key;
+ return null;
+}
+function candidates(roster,equipment){const key=family((equipment.name||'')+' '+(equipment.equipment_type||''));return key?roster.filter(x=>family(x.position)===key):[];}
+const api={family,candidates};if(typeof module!=='undefined')module.exports=api;else root.DataEventOperators=api;
+})(typeof globalThis!=='undefined'?globalThis:this);
+</script>
 <script>
 "use strict";
 
@@ -561,6 +573,21 @@ function equipmentGroupTabs() {
     '<button type="button" data-equipment-group="'+key+'" class="'+(activeEquipmentGroup===key?'active':'')+'">'+label+' ('+equipment.filter(x=>equipmentGroup(x)===key).length+')</button>'
   ).join('') + '</div>';
 }
+const DATA_OPERATOR_ROSTER=[{"code":"MAK7219","name":"Н.Дүүрэнбилэг","position":"РС-3000 экскаваторын оператор"},{"code":"ETS2507","name":"Л.Бат-Өлзий","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0667","name":"С.Сүлеймен","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0663","name":"Х.Сүхбаатар","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0662","name":"П.Номинхаан","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0661","name":"Д.Зургаанжин","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0660","name":"Т.Нарантуяа","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0659","name":"Б.Цогтбаатар","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0651","name":"Р.Энхтүвшин","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0603","name":"Б.Мөнхүү","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0496","name":"Г.Баяртулга","position":"РС-4000 экскаваторын оператор"},{"code":"ETS0481","name":"О.Мөнхцог","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0465","name":"Т.Баярхүү","position":"РС-4000 экскаваторын оператор"},{"code":"ETS0451","name":"Ж.Гомбо","position":"WA-900 ачигчийн оператор"},{"code":"ETS0438","name":"Ц.Батзолбоо","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0432","name":"Ц.Батмөнх","position":"РС-4000 экскаваторын оператор"},{"code":"ETS0429","name":"О.Батзориг","position":"САТ-16М автогрейдерын оператор"},{"code":"ETS0405","name":"Д.Баттөр","position":"WA-900 ачигчийн оператор"},{"code":"ETS0376","name":"Ж.Оюунболд","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0358","name":"Б.Цогтбаяр","position":"Бульдозерийн оператор"},{"code":"ETS0354","name":"Г.Эрдэнэхүү","position":"Бульдозерийн оператор"},{"code":"ETS0349","name":"Т.Хасбаатар","position":"САТ-16М автогрейдерын оператор"},{"code":"ETS0346","name":"Е.Батзул","position":"WA-900 ачигчийн оператор"},{"code":"ETS0344","name":"Ц.Мөнх-Од","position":"РС-3000 экскаваторын оператор"},{"code":"ETS0340","name":"Г.Наранбаатар","position":"САТ-16М автогрейдерын оператор"},{"code":"ETS0307","name":"Ш.Ариунбаяр","position":"WA-900 ачигчийн оператор"},{"code":"ETS0289","name":"С.Саранхүү Эцс","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0247","name":"Ц.Гантулга","position":"РС-3000 экскаваторын оператор"},{"code":"ETS0242","name":"Э.Батдэлгэр","position":"РС-3000 экскаваторын оператор"},{"code":"ETS0239","name":"Б.Ест-Отгон","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0234","name":"Д.Бямбатогоо","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0233","name":"Ж.Бямбаахүү","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0229","name":"Б.Энх-Орших","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0221","name":"П.Тэмүүжин","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0218","name":"Ө.Бавуугарьд","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0217","name":"П.Мэндбаяр","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0216","name":"Ө.Түмэнбаяр","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0210","name":"В.Мягмардорж","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0209","name":"Б.Энхжаргал","position":"Бульдозерийн оператор"},{"code":"ETS0204","name":"З.Эрдэнэбилэг","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0196","name":"Ц.Ганзориг","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0194","name":"О.Гөөгөө","position":"Бульдозерийн оператор"},{"code":"ETS0149","name":"Г.Мөнхсайхан","position":"Komatsu-830E Автосомасвалын оператор"},{"code":"ETS0084","name":"Д.Галмандах","position":"Автосамосвалын оператор-830 E"},{"code":"ETS0069","name":"Б.Бат-Эрдэнэ","position":"Автосамосвалын оператор-830 E"}];
+function rosterOperatorOptions(item,current,query=''){
+ const list=DataEventOperators.candidates(DATA_OPERATOR_ROSTER,item),q=query.trim().toLocaleLowerCase();const filtered=list.filter(x=>(x.name+' '+x.code+' '+x.position).toLocaleLowerCase().includes(q));let text='<option value="">Оператор сонгох</option>';
+ if(current&&!filtered.some(x=>x.name===current))text+='<option selected value="'+esc(current)+'">'+esc(current)+' (одоогийн бүртгэл)</option>';
+ text+=filtered.map(x=>'<option value="'+esc(x.name)+'"'+(x.name===current?' selected':'')+'>'+esc(x.name+' · '+x.code)+'</option>').join('');return {text,count:filtered.length,total:list.length};
+}
+function rosterOperatorPicker(item,current){
+ const list=DataEventOperators.candidates(DATA_OPERATOR_ROSTER,item);
+ if(!list.length)return '<input data-operator-id="'+esc(item.id)+'" value="'+esc(current)+'" placeholder="Операторын нэр">';
+ const options=rosterOperatorOptions(item,current);
+ return '<div class="roster-picker"><input type="search" data-operator-search="'+esc(item.id)+'" placeholder="Нэр эсвэл ажилтны кодоор хайх" aria-label="Оператор хайх" autocomplete="off"><select data-operator-id="'+esc(item.id)+'" aria-label="'+esc(item.name)+' оператор">'+options.text+'</select><small data-operator-count="'+esc(item.id)+'">'+options.count+' оператор · албан тушаалаар шүүсэн</small></div>';
+}
+document.addEventListener('input',function(event){const input=event.target;if(!input.matches('[data-operator-search]'))return;const box=input.closest('.roster-picker'),select=box.querySelector('select'),item=equipment.find(x=>String(x.id)===String(input.dataset.operatorSearch));if(!item)return;const result=rosterOperatorOptions(item,select.value,input.value);select.innerHTML=result.text;box.querySelector('small').textContent=result.count+' / '+result.total+' оператор';});
+(function(){const style=document.createElement('style');style.textContent='.operator-row .roster-picker{flex:1;min-width:0;display:grid;gap:6px}.roster-picker input,.roster-picker select{width:100%;box-sizing:border-box;min-width:0;font-size:13px}.roster-picker small{font-size:11px;color:#bda99a}.operator-row{align-items:center}';document.head.append(style);})();
+
 function render() {
   const working = equipment.filter(function(x){ return x.current_status === "Б Бүтээлтэй | ЭЦС"; }).length;
 
@@ -576,7 +603,7 @@ function render() {
         '<div class="name">' + esc(x.name) + '</div>' +
         '<div class="type">' + esc(x.equipment_type) + '</div>' +
         '<div class="operator-row">' +
-          '<input data-operator-id="' + esc(x.id) + '" value="' + esc(operator) + '" placeholder="Операторын нэр">' +
+          rosterOperatorPicker(x, operator) +
           '<button data-clear-operator-id="' + esc(x.id) + '">Цэвэрлэх</button>' +
         '</div>' +
         '<div class="current"><small>Одоогийн төлөв</small><br><span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span></div>' +
