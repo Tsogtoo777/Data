@@ -1,9 +1,31 @@
 {
-  "name": "Data Event",
-  "short_name": "Data Event",
-  "start_url": "./",
+  "id": "/",
+  "name": "DATA",
+  "short_name": "DATA",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f4f7fb",
-  "theme_color": "#0b6e69",
-  "lang": "mn"
+  "background_color": "#0f1726",
+  "theme_color": "#ff711e",
+  "lang": "mn",
+  "icons": [
+    {
+      "src": "icon-192.png?v=20261018",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png?v=20261018",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png?v=20261018",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }
