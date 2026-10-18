@@ -78,6 +78,18 @@ select option{background:#101010;color:var(--mak-orange)}
 .equipment-tabs button.active{background:var(--mak-orange);color:#111;border-color:var(--mak-orange)}
 @media(max-width:650px){.equipment-tabs{gap:4px}.equipment-tabs button{font-size:12px;padding:10px 2px}}
 </style>
+<style>
+/* Shared status colors: Equipment, selectors and Dashboard timeline */
+body .status-cat0{background:#2DAA70!important;color:#071D12!important;border-color:#2DAA70!important;font-weight:700} body #truckTimeline .tl-work{color:#071D12!important}
+body .status-cat1{background:#A9D6EF!important;color:#102534!important;border-color:#A9D6EF!important;font-weight:700} body #truckTimeline .tl-ready{color:#102534!important}
+body .status-cat2{background:#F2D34F!important;color:#292100!important;border-color:#F2D34F!important;font-weight:700} body #truckTimeline .tl-normative{color:#292100!important}
+body .status-cat3{background:#F28C28!important;color:#301500!important;border-color:#F28C28!important;font-weight:700} body #truckTimeline .tl-operating{color:#301500!important}
+body .status-cat4{background:#EC8FC2!important;color:#311125!important;border-color:#EC8FC2!important;font-weight:700} body #truckTimeline .tl-planned{color:#311125!important}
+body .status-cat5{background:#DC4444!important;color:#FFFFFF!important;border-color:#DC4444!important;font-weight:700} body #truckTimeline .tl-repair{color:#FFFFFF!important}
+body .status-cat6{background:#999999!important;color:#181818!important;border-color:#999999!important;font-weight:700} body #truckTimeline .tl-supply{color:#181818!important}
+body .status-cat7{background:#966344!important;color:#FFFFFF!important;border-color:#966344!important;font-weight:700} body #truckTimeline .tl-external{color:#FFFFFF!important}
+body .status-unclassified{background:#605C70!important;color:#fff!important} .modal-grid button.active{outline:2px solid white;outline-offset:-3px} body #truckTimeline .tl-gap{background:repeating-linear-gradient(135deg,#242424,#242424 5px,#555 5px,#555 7px)!important;color:white!important} body #truckTimeline .tl-overlap{background:repeating-linear-gradient(45deg,#ffffff,#ffffff 5px,#8e1734 5px,#8e1734 9px)!important;color:#111!important}
+</style>
 </head>
 <style>
 #authGate{position:fixed;inset:0;z-index:99999;background:#090909;display:flex;align-items:center;justify-content:center;padding:18px;color:#f4f4f4}
@@ -167,6 +179,7 @@ function candidates(roster,equipment){const key=family((equipment.name||'')+' '+
 const api={family,candidates};if(typeof module!=='undefined')module.exports=api;else root.DataEventOperators=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
 </script>
+<script>(function(root){"use strict";const categories=[{"name": "Бүтээлтэй", "key": "work", "color": "#2DAA70", "text": "#071D12", "statuses": ["Б Бүтээлтэй | ЭЦС"]}, {"name": "Бэлэн байдалд", "key": "ready", "color": "#A9D6EF", "text": "#102534", "statuses": ["Төлөвлөгөөний дагуу ажиллахгүй | ЭЦС", "Бэлэн нөөцөнд зогсож байна | ЭЦС"]}, {"name": "Норматив", "key": "normative", "color": "#F2D34F", "text": "#292100", "statuses": ["Амралт цайны цаг | ЭЦС", "Түлш авах хугацаа | ЭЦС", "Унтлагын цаг | ЭЦС", "Ээлж солилцох | ЭЦС", "Усан хангамж | ЭЦС"]}, {"name": "Ашиглалтаас шалтгаалсан", "key": "operating", "color": "#F28C28", "text": "#301500", "statuses": ["Цайны цаг хэтрэлт | ЭЦС", "Түлш авах хугацаа хэтрэлт | ЭЦС", "Унтлагын цаг хэтрэлт | ЭЦС", "Ээлж солилцох хэтрэлт | ЭЦС", "Ус хангамж хэтрэлт | ЭЦС", "Тэсэлгээний хугацаа хэтрэлт | ЭЦС", "Операторын тойрох үзлэг | ЭЦС", "Операторын гэнэтийн үзлэг | ЭЦС", "Тэсэлгээнээс шалтгаалсан нүүдэл | ЭЦС", "Хувийн цаг | ЭЦС", "Уул технологийн хүндрэл | ЭЦС", "Хорших техник дутагдалтай | ЭЦС", "Ажиллах талбайгүй | ЭЦС", "Ачуулах экскаватороо хүлээсэн | ЭЦС", "Ажиллах хүнгүй | ЭЦС", "Операторгүй | ЭЦС", "Операторын бие муудсан | ЭЦС", "Оператор сургалтанд суусан | ЭЦС", "Экскаваторт гэнэтийн эвдрэл гарсан | ЭЦС", "Инженерийн ажил | ЭЦС", "Ул түрэх, ажлын талбай бэлдэх | ЭЦС", "Маркшейдер шалтгаалсан зогсолт | ЭЦС", "Геологи шалтгаалсан зогсолт | ЭЦС", "Цахилгааны зөөвөр нүүдэл | ЭЦС", "Мөргөцөг хоорондын шилжилт хөдөлгөөн | ЭЦС", "Якно зөөвөрлөх | ЭЦС"]}, {"name": "Төлөвлөгөөт засвар", "key": "planned", "color": "#EC8FC2", "text": "#311125", "statuses": ["Экскаватор Төлөвлөгөөт засварт зогссон | ЭЦС", "Механик төлөвлөгөөт үзлэг | ЭЦС", "Техник үйлчилгээ (мот.цаг) | ЭЦС", "Тосолгоо үйлчилгээ тос масло нэмэх | ЭЦС", "Төлөвлөгөөт түргэн элэгдэх | ЭЦС"]}, {"name": "Эвдрэл гэмтэл, түүнтэй холбоотой засварын хүлээлт", "key": "repair", "color": "#DC4444", "text": "#FFFFFF", "statuses": ["IT Хүлээлт | ЭЦС", "Түргэн элэгдэх гэнэтийн | ЭЦС", "Механик хүлээлт | ЭЦС", "Цахилгаанчин хүлээлт | ЭЦС", "Механик гэнэтийн үзлэг | ЭЦС", "Тосолгоо хүлээлт | ЭЦС", "Станц харилцаа холбооны гэмтэл завсар | ЭЦС", "Цахилгаан систем | ЭЦС", "Гидрийн систем | ЭЦС", "Гидрийн шланк | ЭЦС", "Гидрийн цилиндр | ЭЦС", "Засвар хүлээгдэж байгаа | ЭЦС", "Засварчин хүрэлцээгүй | ЭЦС", "Хөдөлгүүр засвар | ЭЦС", "Тормозны систем | ЭЦС", "Хүч дамжуулах анги | ЭЦС", "Хөргөлт, халаалтын систем | ЭЦС", "Гагнуурын ажил | ЭЦС", "Явах анги | ЭЦС", "Хийн систем Бусад | ЭЦС", "Дугуй | ЭЦС", "Түлшний систем | ЭЦС", "Тосолгооны систем | ЭЦС", "Гэрээт гэнэтийн үзлэг | ЭЦС", "Засвар цаг хэтрэлт/ мото.цаг/ | ЭЦС", "Асаалтын систем | ЭЦС", "Усны систем | ЭЦС", "Агаарын систем | ЭЦС", "Ажлын багаж | ЭЦС", "Удирдлагын систем | ЭЦС", "Кабин засвар | ЭЦС", "Шат тавцан | ЭЦС", "Цамхагийн засвар | ЭЦС", "Гэрээт компани засвар | ЭЦС"]}, {"name": "Сэлбэг хангамж", "key": "supply", "color": "#999999", "text": "#181818", "statuses": ["Сэлбэг хүлээлт | ЭЦС", "Сэлбэггүй зогссон | ЭЦС", "Хангамжаас шалтгаалсан | ЭЦС", "Түлш, тосгүй | ЭЦС", "Үйлчилгээний машин дутагдалтай | ЭЦС"]}, {"name": "Гадны нөлөөлөл", "key": "external", "color": "#966344", "text": "#FFFFFF", "statuses": ["Цаг агаарын саатал, хүндрэл | ЭЦС", "Захиргааны шийдвэрээр зогсоосон сул зогсолт | ЭЦС", "Өөр төсөлд ажиллах | ЭЦС", "Цахилгаан тасралт Төвийн шугам | ЭЦС", "Дэд бүтэцийн цахилгааны гэмтэл Өндрийн | ЭЦС", "Улсын байгууллага хяналт шалгалт | ЭЦС"]}];const clean=v=>String(v??" ").split("|")[0].trim().replace(/\s+/g," ");const lookup=new Map();categories.forEach((c,i)=>c.statuses.forEach(s=>lookup.set(clean(s),i)));function index(s){return lookup.get(clean(s))??-1;}const api={categories,index,category:s=>categories[index(s)]||null};if(typeof module!=="undefined"&&module.exports)module.exports=api;else root.DataStatusCatalog=api;})(globalThis);</script>
 <script>
 "use strict";
 
@@ -335,122 +348,22 @@ function needsComment(status) {
          s.includes("оношилгоо механик") || s.includes("idle") || s.includes("down");
 }
 
-function statusClass(status) {
-  const s = String(status || "");
-  if (s === "Б Бүтээлтэй | ЭЦС") return "status-working";
-  if (s.includes("засвар") || s.includes("Засвар") || s.includes("эвдрэл")) return "status-repair";
-  if (s.includes("цахилгаан") || s.includes("Цахилгаан")) return "status-electric";
-  if (["Ачуулах экскаватороо хүлээсэн | ЭЦС","Түлш авах хугацаа | ЭЦС","Усан хангамж | ЭЦС"].includes(s) || s.includes("хүлээлт")) return "status-wait";
-  if (s.includes("шилжилт") || s.includes("шилжсэн") || s.includes("Ээлж")) return "status-shift";
-  return "status-other";
-}
+function statusClass(status) { const i=DataStatusCatalog.index(status); return i<0?"status-unclassified":"status-cat"+i; }
 
 // Зөвхөн дэлгэцийн ангилал: Supabase дахь төлөвийн нэрсийг өөрчлөхгүй.
-const STATUS_CATEGORIES = ["Норматив сул зогсолт", "Ашиглалтаас шалтгаалсан сул зогсолт", "Эвдрэл гэмтлээс шалтгаалсан сул зогсолт", "Хангамжаас шалтгаалсан"];
-const STATUS_GROUPS = [
-  [
-    "Төлөвлөгөөний дагуу ажиллахгүй | ЭЦС",
-    "Бэлэн нөөцөнд зогсож байна | ЭЦС",
-    "Амралт цайны цаг | ЭЦС",
-    "Түлш авах хугацаа | ЭЦС",
-    "Унтлагын цаг | ЭЦС",
-    "Ээлж солилцох | ЭЦС",
-    "Усан хангамж | ЭЦС",
-    "Цайны цаг хэтрэлт | ЭЦС",
-    "Түлш авах хугацаа хэтрэлт | ЭЦС",
-    "Унтлагын цаг хэтрэлт | ЭЦС",
-    "Ээлж солилцох хэтрэлт | ЭЦС",
-    "Ус хангамж хэтрэлт | ЭЦС",
-    "Тэсэлгээний хугацаа хэтрэлт | ЭЦС",
-    "Б Бүтээлтэй | ЭЦС"
-  ],
-  [
-    "Операторын тойрох үзлэг | ЭЦС",
-    "Операторын гэнэтийн үзлэг | ЭЦС",
-    "Тэсэлгээнээс шалтгаалсан нүүдэл | ЭЦС",
-    "Хувийн цаг | ЭЦС",
-    "Уул технологийн хүндрэл | ЭЦС",
-    "Хорших техник дутагдалтай | ЭЦС",
-    "Ажиллах талбайгүй | ЭЦС",
-    "Ачуулах экскаватороо хүлээсэн | ЭЦС",
-    "Ажиллах хүнгүй | ЭЦС",
-    "Операторгүй | ЭЦС",
-    "Операторын бие муудсан | ЭЦС",
-    "Оператор сургалтанд суусан | ЭЦС",
-    "Экскаваторт гэнэтийн эвдрэл гарсан | ЭЦС",
-    "Инженерийн ажил | ЭЦС",
-    "Ул түрэх, ажлын талбай бэлдэх | ЭЦС",
-    "Маркшейдер шалтгаалсан зогсолт | ЭЦС",
-    "Геологи шалтгаалсан зогсолт | ЭЦС",
-    "Цахилгааны зөөвөр нүүдэл | ЭЦС",
-    "Мөргөцөг хоорондын шилжилт хөдөлгөөн | ЭЦС",
-    "Якно зөөвөрлөх | ЭЦС"
-  ],
-  [
-    "IT Хүлээлт | ЭЦС",
-    "Түргэн элэгдэх гэнэтийн | ЭЦС",
-    "Экскаватор Төлөвлөгөөт засварт зогссон | ЭЦС",
-    "Механик хүлээлт | ЭЦС",
-    "Цахилгаанчин хүлээлт | ЭЦС",
-    "Механик гэнэтийн үзлэг | ЭЦС",
-    "Тосолгоо хүлээлт | ЭЦС",
-    "Станц харилцаа холбооны гэмтэл завсар | ЭЦС",
-    "Цахилгаан систем | ЭЦС",
-    "Сэлбэг хүлээлт | ЭЦС",
-    "Гидрийн систем | ЭЦС",
-    "Гидрийн шланк | ЭЦС",
-    "Гидрийн цилиндр | ЭЦС",
-    "Засвар хүлээгдэж байгаа | ЭЦС",
-    "Засварчин хүрэлцээгүй | ЭЦС",
-    "Хөдөлгүүр засвар | ЭЦС",
-    "Тормозны систем | ЭЦС",
-    "Хүч дамжуулах анги | ЭЦС",
-    "Хөргөлт, халаалтын систем | ЭЦС",
-    "Гагнуурын ажил | ЭЦС",
-    "Явах анги | ЭЦС",
-    "Хийн систем Бусад | ЭЦС",
-    "Дугуй | ЭЦС",
-    "Түлшний систем | ЭЦС",
-    "Тосолгооны систем | ЭЦС",
-    "Гэрээт гэнэтийн үзлэг | ЭЦС",
-    "Засвар цаг хэтрэлт/ мото.цаг/ | ЭЦС",
-    "Асаалтын систем | ЭЦС",
-    "Усны систем | ЭЦС",
-    "Агаарын систем | ЭЦС",
-    "Ажлын багаж | ЭЦС",
-    "Удирдлагын систем | ЭЦС",
-    "Кабин засвар | ЭЦС",
-    "Шат тавцан | ЭЦС",
-    "Цамхагийн засвар | ЭЦС",
-    "Механик төлөвлөгөөт үзлэг | ЭЦС",
-    "Техник үйлчилгээ (мот.цаг) | ЭЦС",
-    "Гэрээт компани засвар | ЭЦС",
-    "Тосолгоо үйлчилгээ тос масло нэмэх | ЭЦС",
-    "Төлөвлөгөөт түргэн элэгдэх | ЭЦС"
-  ],
-  [
-    "Сэлбэггүй зогссон | ЭЦС",
-    "Хангамжаас шалтгаалсан | ЭЦС",
-    "Түлш, тосгүй | ЭЦС",
-    "Цаг агаарын саатал, хүндрэл | ЭЦС",
-    "Захиргааны шийдвэрээр зогсоосон сул зогсолт | ЭЦС",
-    "Өөр төсөлд ажиллах | ЭЦС",
-    "Цахилгаан тасралт Төвийн шугам | ЭЦС",
-    "Дэд бүтэцийн цахилгааны гэмтэл Өндрийн | ЭЦС",
-    "Үйлчилгээний машин дутагдалтай | ЭЦС",
-    "Улсын байгууллага хяналт шалгалт | ЭЦС"
-  ]
-];
-function statusCategory(status) { return STATUS_GROUPS.findIndex(group => group.includes(status)); }
-function operatorOptionalForStatus(status) { return [2, 3].includes(statusCategory(status)); }
+const STATUS_CATEGORIES = DataStatusCatalog.categories.map(x=>x.name);
+const STATUS_GROUPS = DataStatusCatalog.categories.map(x=>x.statuses);
+function statusCategory(status) { return DataStatusCatalog.index(status); }
+const OPERATOR_OPTIONAL_STATUSES = new Set(["IT Хүлээлт | ЭЦС", "Түргэн элэгдэх гэнэтийн | ЭЦС", "Экскаватор Төлөвлөгөөт засварт зогссон | ЭЦС", "Механик хүлээлт | ЭЦС", "Цахилгаанчин хүлээлт | ЭЦС", "Механик гэнэтийн үзлэг | ЭЦС", "Тосолгоо хүлээлт | ЭЦС", "Станц харилцаа холбооны гэмтэл завсар | ЭЦС", "Цахилгаан систем | ЭЦС", "Сэлбэг хүлээлт | ЭЦС", "Гидрийн систем | ЭЦС", "Гидрийн шланк | ЭЦС", "Гидрийн цилиндр | ЭЦС", "Засвар хүлээгдэж байгаа | ЭЦС", "Засварчин хүрэлцээгүй | ЭЦС", "Хөдөлгүүр засвар | ЭЦС", "Тормозны систем | ЭЦС", "Хүч дамжуулах анги | ЭЦС", "Хөргөлт, халаалтын систем | ЭЦС", "Гагнуурын ажил | ЭЦС", "Явах анги | ЭЦС", "Хийн систем Бусад | ЭЦС", "Дугуй | ЭЦС", "Түлшний систем | ЭЦС", "Тосолгооны систем | ЭЦС", "Гэрээт гэнэтийн үзлэг | ЭЦС", "Засвар цаг хэтрэлт/ мото.цаг/ | ЭЦС", "Асаалтын систем | ЭЦС", "Усны систем | ЭЦС", "Агаарын систем | ЭЦС", "Ажлын багаж | ЭЦС", "Удирдлагын систем | ЭЦС", "Кабин засвар | ЭЦС", "Шат тавцан | ЭЦС", "Цамхагийн засвар | ЭЦС", "Механик төлөвлөгөөт үзлэг | ЭЦС", "Техник үйлчилгээ (мот.цаг) | ЭЦС", "Гэрээт компани засвар | ЭЦС", "Тосолгоо үйлчилгээ тос масло нэмэх | ЭЦС", "Төлөвлөгөөт түргэн элэгдэх | ЭЦС", "Сэлбэггүй зогссон | ЭЦС", "Хангамжаас шалтгаалсан | ЭЦС", "Түлш, тосгүй | ЭЦС", "Цаг агаарын саатал, хүндрэл | ЭЦС", "Захиргааны шийдвэрээр зогсоосон сул зогсолт | ЭЦС", "Өөр төсөлд ажиллах | ЭЦС", "Цахилгаан тасралт Төвийн шугам | ЭЦС", "Дэд бүтэцийн цахилгааны гэмтэл Өндрийн | ЭЦС", "Үйлчилгээний машин дутагдалтай | ЭЦС", "Улсын байгууллага хяналт шалгалт | ЭЦС"]);
+function operatorOptionalForStatus(status) { return OPERATOR_OPTIONAL_STATUSES.has(status); }
 function showStatusCategories() {
   const search = document.getElementById("statusSearch");
   if (search && search.value.trim()) { showStatusSearchResults(); return; }
   document.getElementById("statusCategoryBack").style.display = "none";
   document.getElementById("statusStepHint").textContent = "Эхлээд ангиллаа сонгоно уу.";
-  document.getElementById("modalStatuses").innerHTML = STATUS_CATEGORIES.map(function(name, index) {
-    const count = allStatuses().filter(function(status){ return statusCategory(status) === index || (index === 3 && statusCategory(status) === -1); }).length;
-    return '<button type="button" data-status-category="' + index + '">' + esc(name) + ' (' + count + ')</button>';
+  document.getElementById("modalStatuses").innerHTML = STATUS_CATEGORIES.concat(allStatuses().some(x=>statusCategory(x)===-1)?["Ангилаагүй"]:[]).map(function(name, index) {
+    const count = allStatuses().filter(function(status){ return statusCategory(status) === index || (index === 8 && statusCategory(status) === -1); }).length;
+    return '<button type="button" class="' + (index<8?'status-cat'+index:'status-unclassified') + '" data-status-category="' + index + '">' + esc(name) + ' (' + count + ')</button>';
   }).join("");
 }
 function showStatusSearchResults() {
@@ -467,9 +380,9 @@ function showStatusSearchResults() {
 function showStatusCategory(index) {
   const item = equipment.find(function(x){ return String(x.id) === String(selectedEquipmentId); });
   document.getElementById("statusCategoryBack").style.display = "block";
-  document.getElementById("statusStepHint").textContent = STATUS_CATEGORIES[index] + " — төлөвөө сонгоно уу.";
+  document.getElementById("statusStepHint").textContent = (STATUS_CATEGORIES[index]||"Ангилаагүй") + " — төлөвөө сонгоно уу.";
   document.getElementById("modalStatuses").innerHTML = allStatuses().filter(function(status){
-    return statusCategory(status) === index || (index === 3 && statusCategory(status) === -1);
+    return statusCategory(status) === index || (index === 8 && statusCategory(status) === -1);
   }).map(function(status){
     return '<button type="button" class="' + (item && item.current_status === status ? "active " : "") + statusClass(status) + '" data-modal-status="' + esc(status) + '">' + esc(status) + '</button>';
   }).join("");
@@ -1160,7 +1073,7 @@ window.ExcavatorDashboard={readExcel,mount,getData:()=>source};
 'use strict';const NUMBERS=['276','296','297','303','304','305','306'];
 function bounds(day,shift){if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw Error('Огноо буруу');const base=Date.parse(day+'T07:00:00+08:00');if(!Number.isFinite(base)||new Date(base+8*3600000).toISOString().slice(0,10)!==day)throw Error('Огноо буруу');if(!['өдөр','шөнө','хоног'].includes(shift))throw Error('Ээлж буруу');return [base+(shift==='шөнө'?12*3600000:0),base+(shift==='өдөр'?12:24)*3600000];}
 function trucks(equipment){return NUMBERS.map(number=>{const matches=equipment.filter(x=>/830|белаз|belaz/i.test(String(x.name)+' '+String(x.equipment_type))&&new RegExp('(?:^|[^0-9])'+number+'(?:[^0-9]|$)').test(String(x.name)));return {number,equipment:matches.length===1?matches[0]:null,warning:matches.length>1?'Ижил дугаартай хэд хэдэн техник байна':matches.length===0?'Техникийн лавлахаас олдсонгүй':null};});}
-function kind(status){const s=String(status||'').toLowerCase();if(/бүтээлтэй|ажиллаж|working/.test(s))return 'work';if(/засвар|эвдрэл|repair|down/.test(s))return 'repair';if(/ээлж/.test(s))return 'shift';if(/хүлээ|хүлээл|сэлбэг|нөөц|зогс|idle/.test(s))return 'wait';return 'other';}
+function kind(status){return DataStatusCatalog.category(status)?.key||'unknown';}
 function timeline(rows,id,day,shift,asOf=Date.now()){
  const [start,end]=bounds(day,shift),limit=Math.max(start,Math.min(end,asOf)),intervals=[],warnings=[],seen=new Set();
  for(const r of rows){if(String(r.equipment_id)!==String(id))continue;if(r.id!=null){if(seen.has(String(r.id))){warnings.push('Давхардсан ID: '+r.id);continue;}seen.add(String(r.id));}const a=Date.parse(r.start_time),b=r.end_time?Date.parse(r.end_time):limit;if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){warnings.push('Буруу хугацаатай мөр: '+(r.id??'IDгүй'));continue;}if(a<limit&&b>start)intervals.push({a:Math.max(a,start),b:Math.min(b,limit),row:r});}
@@ -1172,7 +1085,7 @@ return {NUMBERS,bounds,trucks,kind,timeline};});
 </script>
 <script>(function(){'use strict';
 const C=TruckTimelineCore,cache=new Map();let request=0,busyKey=null,lastSelection=null,notice='',details=null;
-const colors={work:'#28a66e',repair:'#e65f59',shift:'#4a94e8',wait:'#d9a040',other:'#aa7acb',gap:'#434343',future:'#252525',overlap:'#ed65a7'};
+const colors=Object.assign(Object.fromEntries(DataStatusCatalog.categories.map(c=>[c.key,c.color])),{unknown:'#605C70',gap:'#242424',future:'#151515',overlap:'#FFFFFF'});
 const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock=ms=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(ms);
 const full=ms=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(ms);
@@ -1182,8 +1095,8 @@ function keyFor(day,matches){return (typeof activeSession==='undefined'?'preview
 function host(){const dash=document.getElementById('excavatorDashboard');if(!dash)return null;let node=document.getElementById('truckTimeline');if(!node){node=document.createElement('section');node.id='truckTimeline';dash.append(node);}return node;}
 function detailHTML(segment){return '<strong>'+escape(segment.status)+'</strong><p>'+escape(full(segment.start)+' – '+full(segment.end))+' · '+segment.minutes.toFixed(1)+' минут</p>'+segment.rows.map(r=>'<p>ID '+escape(r.id??'—')+' · '+escape(r.status||'Төлөвгүй')+'<br>Оператор: '+escape(r.operator_name||'Бүртгэлгүй')+'<br>Эх бүртгэл: '+escape(r.start_time?full(Date.parse(r.start_time)):'—')+' – '+escape(r.end_time?full(Date.parse(r.end_time)):'Нээлттэй')+(r.comment?'<br>Тайлбар: '+escape(r.comment):'')+'</p>').join('');}
 function render(){const node=host(),sel=selection();if(!node||!sel)return;const matches=C.trucks(eqs()),key=keyFor(sel.day,matches),data=cache.get(key),[lo,hi]=C.bounds(sel.day,sel.shift),span=hi-lo,n=(hi-lo)/3600000,segments=[];
- const legend=[['work','Бүтээлтэй'],['repair','Засвар / эвдрэл'],['shift','Ээлж солих'],['wait','Хүлээлт / зогсолт'],['other','Бусад төлөв'],['gap','Бүртгэл алга'],['future','Ирээдүй'],['overlap','Давхардал']];
- node.innerHTML='<div class="tl-heading"><div><h2>7 БелАЗын төлвийн timeline</h2><p>'+escape(sel.day)+' · '+escape(sel.shift)+' · '+clock(lo)+'–'+clock(hi)+' (UTC+8)</p></div><button type="button" id="tlRefresh" '+(busyKey?'disabled':'')+'>Төлөв шинэчлэх</button></div><p class="tl-note">Төлөвийг DATA-аас авна. Экскаваторт хуваарилсан түүхийг таамгаар тогтоохгүй, долоон машиныг хамтад нь харуулна.</p><div class="tl-legend">'+legend.map(([k,label])=>'<span><i style="background:'+colors[k]+'"></i>'+label+'</span>').join('')+'</div>'+(notice?'<p role="status" class="ex-notice">'+escape(notice)+'</p>':'')+(data?'<p class="tl-note">Татсан: '+escape(full(data.loadedAt))+'. Төлөв дээр дарж цаг, операторыг харна.</p><div class="tl-scroll"><div class="tl-canvas"><div class="tl-row tl-axis"><span>Техник</span><div>'+Array.from({length:n+1},(_,i)=>'<span style="left:'+100*i/n+'%">'+clock(lo+i*3600000)+'</span>').join('')+'</div></div>'+matches.map(m=>{let t;if(m.equipment)t=C.timeline(data.rows,m.equipment.id,sel.day,sel.shift,data.asOf);return '<div class="tl-row"><div class="tl-name" title="'+escape(m.equipment?.name||'')+'">830-'+m.number+'</div><div class="tl-lane">'+(m.warning?'<span class="tl-missing">'+escape(m.warning)+'</span>':t.segments.map(s=>{const ix=segments.push(s)-1;return '<button type="button" class="tl-segment tl-'+s.type+'" data-segment="'+ix+'" style="left:'+100*(s.start-lo)/span+'%;width:'+100*(s.end-s.start)/span+'%;background:'+colors[s.type]+'" title="'+escape(s.status+' · '+full(s.start)+'–'+full(s.end)+' · '+s.minutes.toFixed(1)+' мин')+'" aria-label="'+escape('830-'+m.number+' '+s.status+' '+clock(s.start)+'–'+clock(s.end))+'">'+(s.minutes/span*60000>0.095?escape(s.type==='gap'?'Бүртгэл алга':s.status.split('|')[0]):'')+'</button>';}).join(''))+'</div></div>'+(t?.warnings.length?'<p class="tl-note">830-'+m.number+': '+escape(t.warnings.join(' · '))+'</p>':'');}).join('')+'</div></div><div class="tl-detail" id="tlDetail" aria-live="polite">'+(details?detailHTML(details):'Өнгөт төлөв дээр дарж дэлгэрэнгүйг харна.')+'</div>':'<p class="tl-note">'+(busyKey?'Бүртгэл татаж байна…':'DATA сайтад нэвтэрсний дараа төлвүүдийг татна.')+'</p>');
+ const legend=[...DataStatusCatalog.categories.map(c=>[c.key,c.name]),['unknown','Ангилаагүй төлөв'],['gap','Бүртгэл алга'],['future','Ирээдүй'],['overlap','Давхардал']];
+ node.innerHTML='<div class="tl-heading"><div><h2>7 БелАЗын төлвийн timeline</h2><p>'+escape(sel.day)+' · '+escape(sel.shift)+' · '+clock(lo)+'–'+clock(hi)+' (UTC+8)</p></div><button type="button" id="tlRefresh" '+(busyKey?'disabled':'')+'>Төлөв шинэчлэх</button></div><p class="tl-note">Төлөвийг DATA-аас авна. Экскаваторт хуваарилсан түүхийг таамгаар тогтоохгүй, долоон машиныг хамтад нь харуулна.</p><div class="tl-legend">'+legend.map(([k,label])=>'<span><i class="tl-'+k+'" style="background:'+colors[k]+'"></i>'+label+'</span>').join('')+'</div>'+(notice?'<p role="status" class="ex-notice">'+escape(notice)+'</p>':'')+(data?'<p class="tl-note">Татсан: '+escape(full(data.loadedAt))+'. Төлөв дээр дарж цаг, операторыг харна.</p><div class="tl-scroll"><div class="tl-canvas"><div class="tl-row tl-axis"><span>Техник</span><div>'+Array.from({length:n+1},(_,i)=>'<span style="left:'+100*i/n+'%">'+clock(lo+i*3600000)+'</span>').join('')+'</div></div>'+matches.map(m=>{let t;if(m.equipment)t=C.timeline(data.rows,m.equipment.id,sel.day,sel.shift,data.asOf);return '<div class="tl-row"><div class="tl-name" title="'+escape(m.equipment?.name||'')+'">830-'+m.number+'</div><div class="tl-lane">'+(m.warning?'<span class="tl-missing">'+escape(m.warning)+'</span>':t.segments.map(s=>{const ix=segments.push(s)-1;return '<button type="button" class="tl-segment tl-'+s.type+'" data-segment="'+ix+'" style="left:'+100*(s.start-lo)/span+'%;width:'+100*(s.end-s.start)/span+'%;background:'+colors[s.type]+'" title="'+escape(s.status+' · '+full(s.start)+'–'+full(s.end)+' · '+s.minutes.toFixed(1)+' мин')+'" aria-label="'+escape('830-'+m.number+' '+s.status+' '+clock(s.start)+'–'+clock(s.end))+'">'+(s.minutes/span*60000>0.095?escape(s.type==='gap'?'Бүртгэл алга':s.status.split('|')[0]):'')+'</button>';}).join(''))+'</div></div>'+(t?.warnings.length?'<p class="tl-note">830-'+m.number+': '+escape(t.warnings.join(' · '))+'</p>':'');}).join('')+'</div></div><div class="tl-detail" id="tlDetail" aria-live="polite">'+(details?detailHTML(details):'Өнгөт төлөв дээр дарж дэлгэрэнгүйг харна.')+'</div>':'<p class="tl-note">'+(busyKey?'Бүртгэл татаж байна…':'DATA сайтад нэвтэрсний дараа төлвүүдийг татна.')+'</p>');
  node.querySelector('#tlRefresh').onclick=()=>load(true);for(const button of node.querySelectorAll('[data-segment]'))button.onclick=()=>{details=segments[Number(button.dataset.segment)];node.querySelector('#tlDetail').innerHTML=detailHTML(details);};
 }
 async function load(force=false){const sel=selection();if(!sel)return;const matches=C.trucks(eqs()),key=keyFor(sel.day,matches);lastSelection=sel;if(!matches.some(x=>x.equipment)||typeof api!=='function'){notice='';render();return;}if(!force&&cache.has(key)){notice='';render();return;}if(busyKey===key)return;const token=++request;busyKey=key;notice='';details=null;render();
