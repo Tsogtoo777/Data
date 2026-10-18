@@ -564,21 +564,7 @@ function equipmentGroupTabs() {
 function render() {
   const working = equipment.filter(function(x){ return x.current_status === "Б Бүтээлтэй | ЭЦС"; }).length;
 
-  document.getElementById("dash").innerHTML =
-    '<div class="stats">' +
-      '<div class="stat">Нийт техник<b>' + equipment.length + '</b></div>' +
-      '<div class="stat">Ажиллаж буй<b>' + working + '</b></div>' +
-    '</div>' +
-    '<div class="card"><b>Одоогийн төлөв</b>' +
-    equipment.map(function(x) {
-      return '<div class="log">' +
-        '<b>' + esc(x.name) + '</b>' +
-        '<span>' + esc(getOperator(x.id) || "-") + '</span>' +
-        '<span><span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span></span>' +
-        '<span>' + fmt(x.updated_at || x.created_at) + '</span>' +
-      '</div>';
-    }).join("") +
-    '</div>';
+  document.getElementById("dash").innerHTML = "";
 
   document.getElementById("eq").innerHTML =
     '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small></div>' +
