@@ -781,7 +781,7 @@ async function changeBlock(equipmentId){
   blockLocations=await api('equipment_block_locations?select=*');render();renderProduction();toast('Блок, түвшин хадгалагдлаа.');
  }catch(e){toast('Байршил хадгалах алдаа: '+e.message);}
 }
-const MATERIAL_TYPES = ["Хөрс", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Бусад", "Замын дэвсэлт", "Шимт хөрс"];
+const MATERIAL_TYPES = ["Хөрс", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Сульфид хүдэр", "Балансын сульфид хүдэр", "Бусад", "Замын дэвсэлт", "Шимт хөрс"];
 let activeProductionGroup = "truck";
 function productionGroup(item){return is830(item)?"truck":isDrill(item)?"drill":null;}
 function productionSlotMode(day,hour,now=new Date()){
