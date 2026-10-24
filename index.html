@@ -268,6 +268,7 @@ const api={family,candidates};if(typeof module!=='undefined')module.exports=api;
 'use strict';
 const OFFSET=8*3600000;
 function shiftNow(now=Date.now()){const local=new Date(now+OFFSET),hour=local.getUTCHours();if(hour<7)local.setUTCDate(local.getUTCDate()-1);return {day:local.toISOString().slice(0,10),shift:hour>=7&&hour<19?'өдөр':'шөнө'};}
+const serialLocal=ms=>serial(ms)+8/24;
 function bounds(day,shift){if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!['өдөр','шөнө'].includes(shift))throw Error('Огноо, ээлжээ шалгана уу.');const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00');if(!Number.isFinite(lo)||new Date(lo+OFFSET).toISOString().slice(0,10)!==day)throw Error('Огноо буруу');return[lo,lo+43200000];}
 function parseValue(raw){if(String(raw??'').trim()==='')return null;const text=String(raw).trim().replace(',','.');if(!/^\d+(?:\.\d{1,3})?$/.test(text))throw Error('Моточагийг 3 хүртэл орны нарийвчлалтай эерэг тоогоор бичнэ үү.');const value=Number(text);if(!Number.isFinite(value)||value>=1000000000)throw Error('Моточагийн тоо хэт их байна.');return value;}
 function stamp(ms){return Number.isFinite(ms)?new Date(ms+OFFSET).toISOString().slice(0,19).replace('T',' '):'';}
@@ -1369,6 +1370,7 @@ window.ExcavatorDashboard={readExcel,mount,getData:()=>source};
 <!-- TRUCK TIMELINE BEGIN -->
 <script>(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.TruckTimelineCore=factory();})(globalThis,function(){
 'use strict';const NUMBERS=['276','296','297','303','304','305','306'];
+const serialLocal=ms=>serial(ms)+8/24;
 function bounds(day,shift){if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw Error('Огноо буруу');const base=Date.parse(day+'T07:00:00+08:00');if(!Number.isFinite(base)||new Date(base+8*3600000).toISOString().slice(0,10)!==day)throw Error('Огноо буруу');if(!['өдөр','шөнө','хоног'].includes(shift))throw Error('Ээлж буруу');return [base+(shift==='шөнө'?12*3600000:0),base+(shift==='өдөр'?12:24)*3600000];}
 function trucks(equipment){return NUMBERS.map(number=>{const matches=equipment.filter(x=>/830|белаз|belaz/i.test(String(x.name)+' '+String(x.equipment_type))&&new RegExp('(?:^|[^0-9])'+number+'(?:[^0-9]|$)').test(String(x.name)));return {number,equipment:matches.length===1?matches[0]:null,warning:matches.length>1?'Ижил дугаартай хэд хэдэн техник байна':matches.length===0?'Техникийн лавлахаас олдсонгүй':null};});}
 function kind(status){return DataStatusCatalog.category(status)?.key||'unknown';}
@@ -1414,6 +1416,7 @@ document.addEventListener('data-dashboard-selection',()=>{const sel=selection();
 'use strict';
 const norm=v=>String(v??'').normalize('NFKC').toLowerCase().replace(/р/g,'p').replace(/с/g,'c').replace(/\s+/g,'').replace(/[^\p{L}\p{N}]/gu,'');
 function equipmentKey(name){const s=norm(name),t=String(name||'');if(/830/.test(s)){const m=t.match(/(?:^|\D)(276|296|297|303|304|305|306)(?:\D|$)/);if(m)return 'truck'+m[1];}if(/(?:^|komatsu)pc3000(?:6d|01)?$/.test(s))return 'pc3000';if(/(?:^|komatsu)pc4000(?:6|01)?$/.test(s))return 'pc4000';if(/wa900/.test(s))return 'wa900';if(/650/.test(s)&&/sandvik|di650|өрөм/.test(s))return 'drill650';if(/410/.test(s)&&/229/.test(s))return 'drill229';if(/410/.test(s)&&/165/.test(s))return 'drill165';if(/16[мm]02/.test(s))return 'grader02';if(/16[мm]01/.test(s))return 'grader01';if(/d10t/.test(s))return 'dozer01';return null;}
+const serialLocal=ms=>serial(ms)+8/24;
 function bounds(day,shift){if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!['өдөр','шөнө'].includes(shift))throw Error('Огноо, ээлжээ сонгоно уу.');const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00');if(!Number.isFinite(lo)||new Date(lo+8*3600000).toISOString().slice(0,10)!==day)throw Error('Огноо буруу.');return [lo,lo+43200000];}
 function statusKey(s){return String(s??'').split('|')[0].normalize('NFKC').trim().toLowerCase().replace(/\s+/g,' ');}
 function operatorKey(v){return String(v??'').normalize('NFKC').toLocaleLowerCase().replace(/[\s.]/g,'');}
@@ -2068,28 +2071,48 @@ const $=id=>document.getElementById(id);
 const localDay=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const serial=ms=>ms/86400000+25569;
+// Read ONLY the exact cell, not adjacent cells or formula caches in other columns.
+// The old regex crossed self-closing <c .../> elements and mistakenly treated every blank row as occupied.
+function exactCell(row,col,n){
+ const r=col+n;
+ const re=new RegExp('<c\\b(?=[^>]*\\br="'+r+'")[^>]*?(?:\\/\\s*>|>[\\s\\S]*?<\\/c>)');
+ return re.exec(row)?.[0]||'';
+}
+function occupiedCell(token){
+ return /<v>[^<]+<\/v>/.test(token)||/<t(?:\s[^>]*)?>[^<]+<\/t>/.test(token)||/<f(?:\s|>)/.test(token);
+}
 function cell(row,col,n,value){
- const r=col+n,re=new RegExp('<c\\b(?=[^>]*\\br="'+r+'")([^>]*)(?:\\/>|>([\\s\\S]*?)<\\/c>)');
- const hit=re.exec(row);if(hit&&/<f(?:\s|>)/.test(hit[0]))throw Error('Томьёотой нүд: '+r);
- const style=hit?(/\bs="([^"]+)"/.exec(hit[1])||[])[1]:null;
+ const r=col+n,old=exactCell(row,col,n);
+ // The user's workbook has styled input cells in every row. Fail closed on changed templates.
+ if(!old)throw Error('Загварын нүд олдсонгүй: '+r);
+ if(/<f(?:\s|>)/.test(old))throw Error('Томьёотой нүдийг өөрчлөхгүй: '+r);
+ const style=(/\bs="([^"]+)"/.exec(old.split('>')[0])||[])[1];
  const base='<c r="'+r+'"'+(style?' s="'+style+'"':'');
  const out=typeof value==='number'?base+'><v>'+value+'</v></c>':base+' t="inlineStr"><is><t xml:space="preserve">'+esc(value)+'</t></is></c>';
- return hit?row.replace(re,out):row.replace('</row>',out+'</row>');
+ return row.replace(old,out);
 }
 function replaceRows(xml,data,fields,sheet){
- let offset=0, available=0;
- xml=xml.replace(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(row,id)=>{
-  const n=Number(id);if(n<4)return row;
-  // Existing content is sacred. Blank rows may have prefilled zero duration; that is acceptable.
-  const aCell=(new RegExp('<c\\b(?=[^>]*\\br="A'+n+'")[^>]*(?:\\/>|>[\\s\\S]*?<\\/c>)')).exec(row)?.[0]||'';
-  if(/<v>[^<]+<\/v>/.test(aCell)||/<t[^>]*>[^<]+<\/t>/.test(aCell)||/<f(?:\s|>)/.test(aCell))return row;
-  if(offset>=data.length)return row;
-  const entry=data[offset++];available++;
-  for(const [col,val] of Object.entries(fields(entry)))if(val!==null&&val!==undefined&&val!=='')row=cell(row,col,n,val);
+ let offset=0, lastUsed=3;
+ const rowPattern=/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g;
+ // Append after existing records. Some templates have blank holes among historical records.
+ const inputCols=sheet==='Засварын зогсолт'?['A','B','C','D','E','F','G','H','I','J']:['A','B','C','D','E','F','G','I'];
+ xml.replace(rowPattern,(row,id)=>{
+  const n=Number(id);
+  if(n>=4&&inputCols.some(col=>occupiedCell(exactCell(row,col,n))))lastUsed=Math.max(lastUsed,n);
   return row;
  });
- if(offset<data.length)throw Error(sheet+': чөлөөтэй мөр хүрэлцэхгүй ('+offset+'/'+data.length+'). Загвараа шалгана уу.');
- return {xml,count:available};
+ xml=xml.replace(rowPattern,(row,id)=>{
+  const n=Number(id);if(n<=lastUsed||offset>=data.length)return row;
+  // Only check input columns: K (repair) and H (operating) have pre-existing formulas.
+  if(inputCols.some(col=>occupiedCell(exactCell(row,col,n))))return row;
+  const entry=data[offset];
+  let changed=row;
+  for(const [col,val] of Object.entries(fields(entry)))if(val!==null&&val!==undefined&&val!=='')changed=cell(changed,col,n,val);
+  offset++;
+  return changed;
+ });
+ if(offset<data.length)throw Error(sheet+': хоосон мөр хүрэлцэхгүй ('+offset+'/'+data.length+'). Excel загвараа шалгана уу.');
+ return {xml,count:offset};
 }
 async function targetPath(zip,name){
  const workbook=await zip.file('xl/workbook.xml')?.async('string'),rels=await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
@@ -2104,6 +2127,7 @@ async function targetPath(zip,name){
  if(!zip.file(path))throw Error('XML байхгүй: '+path);
  return path;
 }
+const serialLocal=ms=>serial(ms)+8/24;
 function bounds(day,shift){const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00');return {lo,hi:lo+43200000};}
 async function fetchEvents(lo,hi){const a=[];for(let offset=0;offset<60000;offset+=1000){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc,id.asc&limit=1000&offset='+offset;const batch=await api(qs);if(!Array.isArray(batch))throw Error('Бүртгэл татаж чадсангүй');a.push(...batch);if(batch.length<1000)return a;}throw Error('Хэт олон бүртгэл');}
 function classify(status){const c=DataStatusCatalog.category(status);return c?.key||'unknown';}
@@ -2133,10 +2157,20 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
   const zip=await JSZip.loadAsync(await file.arrayBuffer());
   const repPath=await targetPath(zip,'Засварын зогсолт'),opsPath=await targetPath(zip,'Ашиглалт зогсолт');
   const dayval=serial(Date.parse(day+'T00:00:00Z'));
-  const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,H:e.status,I:serial(e.start),J:serial(e.end),K:e.hours}),'Засварын зогсолт');
-  const ops=replaceRows(await zip.file(opsPath).async('string'),groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serial(e.start),G:serial(e.end),H:e.hours}),'Ашиглалт зогсолт');
-  if(!confirm(day+' · '+shift+'\nЗасвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр\n\nЗөвхөн хоосон мөрүүдэд нэмнэ; хуучин Excel-г өөрчлөхгүй. Татах уу?'))return;
+  const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт');
+  const ops=replaceRows(await zip.file(opsPath).async('string'),groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serialLocal(e.start),G:serialLocal(e.end)}),'Ашиглалт зогсолт');
+  if(!confirm(day+' · '+shift+'\nЗасвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр\n\nХоосон мөрүүдэд нэмнэ. Хугацааны томьёог хадгална; эх Excel файлыг өөрчлөхгүй. Татах уу?'))return;
   zip.file(repPath,rep.xml);zip.file(opsPath,ops.xml);
+  // Request an Excel recalculation so the existing duration formulas update from new start/end dates.
+  const wbXml=await zip.file('xl/workbook.xml')?.async('string');
+  if(wbXml){
+   const calc=/<calcPr\b[^>]*\/?>/;
+   const updated=calc.test(wbXml)?wbXml.replace(calc,tag=>{
+     let x=tag.replace(/\s(?:fullCalcOnLoad|forceFullCalc|calcMode)="[^"]*"/g,'');
+     return x.replace(/\/?>$/,' fullCalcOnLoad="1" forceFullCalc="1" calcMode="auto"/>');
+   }):wbXml.replace('</workbook>','<calcPr fullCalcOnLoad="1" forceFullCalc="1" calcMode="auto"/></workbook>');
+   zip.file('xl/workbook.xml',updated);
+  }
   const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_STOPS.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
   msg.textContent='Бэлэн: засвар '+rep.count+', ашиглалт '+ops.count+' мөр. Мото цаг, бусад sheet-ийг өөрчлөөгүй.'+(warnings.length?' Анхааруулга: '+warnings.join('; '):'');
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;}}
@@ -2150,7 +2184,7 @@ function init(){
   sec.id='drStopsPanel';
   sec.className='card';
   sec.style.display='none';
-  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (туршилт)</h3>'+
+  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (засварласан)</h3>'+
     '<p><small>Data Event-ийн сонгосон ээлжийн засварын болон ашиглалтын зогсолтыг Excel-ийн тус тусын sheet-д оруулна. Өмнөх импорт, ERP Daily, «Мэдээ» хэсгийг өөрчлөхгүй.</small></p>'+
     '<div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="'+localDay()+'"></label><label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div>'+
     '<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>'+
