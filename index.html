@@ -1812,6 +1812,54 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const localDay=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
  const fmt=t=>new Date(t+8*3600000).toISOString().slice(0,16).replace('T',' ');
+
+ // Modify OOXML container directly to prevent SheetJS rewriting pre-existing
+ // styles, defined names, formulas, comments and relationships.
+ const xmlEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+ const xCol=i=>{let s='';for(i++;i;i=Math.floor((i-1)/26))s=String.fromCharCode(65+(i-1)%26)+s;return s;};
+ function simpleSheet(rows){
+  let body='';for(let ri=0;ri<rows.length;ri++){
+   let cs='';for(let ci=0;ci<rows[ri].length;ci++){
+    const v=rows[ri][ci];if(v===null||v===undefined||v==='')continue;
+    const r=xCol(ci)+(ri+1);
+    cs+=typeof v==='number'&&Number.isFinite(v)?'<c r="'+r+'"><v>'+v+'</v></c>':'<c r="'+r+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>';
+   }body+='<row r="'+(ri+1)+'">'+cs+'</row>';
+  }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+body+'</sheetData></worksheet>';
+ }
+ async function savePreservedWorkbook(file,sheets,filename){
+  let zip,book,rels,types;
+  if(file){
+   if(file.size>25*1024*1024)throw Error('Загвар 25 MB-аас том');
+   zip=await JSZip.loadAsync(await file.arrayBuffer());
+   const read=async name=>{const f=zip.file(name);if(!f)throw Error('Excel загварт '+name+' байхгүй');return await f.async('string');};
+   [book,rels,types]=await Promise.all([read('xl/workbook.xml'),read('xl/_rels/workbook.xml.rels'),read('[Content_Types].xml')]);
+  }else{
+   zip=new JSZip();
+   book='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets></sheets></workbook>';
+   rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+   types='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>';
+   zip.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  }
+  if(!book.includes('</sheets>')||!rels.includes('</Relationships>')||!types.includes('</Types>'))throw Error('Excel загварын XML бүтэц тохирохгүй');
+  const ids=[...book.matchAll(/<sheet\b[^>]*\bsheetId="(\d+)"/g)].map(m=>Number(m[1]));
+  const relIds=[...rels.matchAll(/\bId="rId(\d+)"/g)].map(m=>Number(m[1]));
+  const partIds=Object.keys(zip.files).map(x=>/^xl\/worksheets\/sheet(\d+)\.xml$/.exec(x)).filter(Boolean).map(m=>Number(m[1]));
+  let sid=Math.max(0,...ids),rid=Math.max(0,...relIds),part=Math.max(0,...partIds);
+  const existing=new Set([...book.matchAll(/<sheet\b[^>]*\bname="([^"]+)"/g)].map(m=>m[1]));
+  for(const [title,data] of sheets){
+   let name=title,ix=2;while(existing.has(name))name=title.slice(0,27)+' '+ix++;
+   existing.add(name);sid++;rid++;part++;
+   const path='xl/worksheets/sheet'+part+'.xml';
+   zip.file(path,simpleSheet(data));
+   book=book.replace('</sheets>','<sheet name="'+xmlEsc(name)+'" sheetId="'+sid+'" r:id="rId'+rid+'"/></sheets>');
+   rels=rels.replace('</Relationships>','<Relationship Id="rId'+rid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+part+'.xml"/></Relationships>');
+   types=types.replace('</Types>','<Override PartName="/'+path+'" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  }
+  zip.file('xl/workbook.xml',book);zip.file('xl/_rels/workbook.xml.rels',rels);zip.file('[Content_Types].xml',types);
+  const out=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+  const url=URL.createObjectURL(out),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }
  let busy=false;
  function init(){const host=document.getElementById('report');if(!host||document.getElementById('erpDailySeparate'))return;
  const section=document.createElement('section');section.id='erpDailySeparate';section.className='card';
@@ -1826,15 +1874,16 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));let issues=[],detail=[],agg=new Map();
  for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round((end-start)/60000*100)/100;detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
  if(!detail.length)throw Error('Энэ ээлжид бүртгэл олдсонгүй.');
- // The provided workbook is preserved. Its business-critical formula cells are never overwritten.
- let wb;if(file){if(file.size>25*1024*1024)throw Error('Загвар 25 MB-аас том');wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellStyles:true,cellFormula:true});}else wb=XLSX.utils.book_new();
- const unique=n=>{let x=n,i=2;while(wb.SheetNames.includes(x))x=n.slice(0,26)+' '+i++;return x;};
- const summary=[['ERP DAILY · ЭЭЛЖИЙН НЭГТГЭЛ'],['Огноо',day,'Ээлж',shift],['Техник','Төлөв','Нийт минут','Нийт цаг','Оператор']];for(const v of [...agg.values()].sort((a,b)=>a.name.localeCompare(b.name,'mn',{numeric:true})||a.status.localeCompare(b.status,'mn')))summary.push([v.name,v.status,Math.round(v.minutes*100)/100,Math.round(v.minutes/60*10000)/10000,[...v.operators].join(', ')]);
+ // Safe ZIP-level export: preserve every existing workbook part verbatim;
+ // add only independent worksheets and the minimum workbook/package links.
+ const summary=[['ERP DAILY · ЭЭЛЖИЙН НЭГТГЭЛ'],['Огноо',day,'Ээлж',shift],['Техник','Төлөв','Нийт минут','Нийт цаг','Оператор']];
+ for(const v of [...agg.values()].sort((a,b)=>a.name.localeCompare(b.name,'mn',{numeric:true})||a.status.localeCompare(b.status,'mn')))
+   summary.push([v.name,v.status,Math.round(v.minutes*100)/100,Math.round(v.minutes/60*10000)/10000,[...v.operators].join(', ')]);
  const details=[['Техник','Оператор','Төлөв','Эхэлсэн','Дууссан','Минут','Тайлбар','Бүртгэлийн ID'],...detail];
- const a=XLSX.utils.aoa_to_sheet(summary),b=XLSX.utils.aoa_to_sheet(details);a['!cols']=[{wch:28},{wch:40},{wch:16},{wch:16},{wch:38}];b['!cols']=[{wch:28},{wch:30},{wch:38},{wch:20},{wch:20},{wch:14},{wch:55},{wch:18}];
- XLSX.utils.book_append_sheet(wb,a,unique('DATA ээлжийн нэгтгэл'));XLSX.utils.book_append_sheet(wb,b,unique('DATA ээлжийн бүртгэл'));
- if(issues.length){const c=XLSX.utils.aoa_to_sheet([['Шалгах асуудал'],...issues.map(x=>[x])]);c['!cols']=[{wch:90}];XLSX.utils.book_append_sheet(wb,c,unique('DATA шалгах зүйлс'));}
- XLSX.writeFile(wb,'ERP_Daily_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'.xlsx');msg.textContent=detail.length+' бүртгэл, '+agg.size+' нэгтгэл гаргалаа. Шалгах асуудал: '+issues.length+'. Загварын үндсэн sheet-үүдийг өөрчлөөгүй.';
+ const sheets=[['DATA ээлжийн нэгтгэл',summary],['DATA ээлжийн бүртгэл',details]];
+ if(issues.length)sheets.push(['DATA шалгах зүйлс',[['Шалгах асуудал'],...issues.map(x=>[x])]]);
+ await savePreservedWorkbook(file,sheets,'ERP_Daily_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'.xlsx');
+ msg.textContent=detail.length+' бүртгэл, '+agg.size+' нэгтгэл гаргалаа. Шалгах асуудал: '+issues.length+'. Загварын хуучин sheet, томьёо, нэрлэсэн мужийг өөрчлөөгүй.';
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{busy=false;button.disabled=false;}}
  function ensureShortcut(){
  const nav=document.querySelector('nav');if(!nav||document.getElementById('erdNavButton'))return;
