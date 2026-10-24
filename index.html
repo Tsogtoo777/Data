@@ -214,19 +214,7 @@ body #eq .current .status-chip{background:transparent!important;color:var(--ui-t
 <section id="production" style="display:none"></section>
 <section id="shiftReview" style="display:none"></section>
 <section id="handover" style="display:none"></section>
-<section id="report" style="display:none">
-<section id="drStopsPanel" class="card">
-<h3>Daily Report · Засварын / Ашиглалтын зогсолт (туршилт)</h3>
-<p><small>Зөвхөн тусдаа экспорт. Хуучин Excel импорт, ERP Daily болон «Мэдээ» хэсэгт хүрэхгүй.</small></p>
-<div class="form-grid">
-<label>Огноо<input type="date" id="drStopsDate" value="2026-10-23"></label>
-<label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө" selected>Шөнө 19:00–07:00</option></select></label>
-</div>
-<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>
-<button class="primary" type="button" id="drStopsExport">Засвар + Ашиглалтын зогсолт Excel татах</button>
-<p id="drStopsMsg" aria-live="polite"></p>
-</section>
-</section>
+<section id="report" style="display:none"></section>
 </main>
 <div id="msg"></div>
 <div id="statusModal" class="modal-backdrop">
@@ -2152,9 +2140,27 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
   const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_STOPS.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
   msg.textContent='Бэлэн: засвар '+rep.count+', ашиглалт '+ops.count+' мөр. Мото цаг, бусад sheet-ийг өөрчлөөгүй.'+(warnings.length?' Анхааруулга: '+warnings.join('; '):'');
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;}}
-function init(){if($('drStopsPanel')){$('drStopsExport').addEventListener('click',run);return;}const host=$('report');if(!host)return;
- const sec=document.createElement('section');sec.id='drStopsPanel';sec.className='card';sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (туршилт)</h3><p><small>Data Event-ээс сонгосон 12 цагийн төлөвийг ангилж, Excel-ийн хоёр sheet-ийн зөвхөн хоосон мөрүүдэд нэмнэ. Бүтээлтэй, бэлэн болон норматив төлөвийг зогсолт руу хүчээр оруулахгүй. Өмнөх импорт, ERP Daily, «Мэдээ» хэсэгт хүрэхгүй.</small></p><div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="'+localDay()+'"></label><label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div><p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p><button class="primary" type="button" id="drStopsExport">Засвар + Ашиглалтын зогсолт Excel татах</button><p id="drStopsMsg" aria-live="polite"></p>';
- host.prepend(sec);$('drStopsExport').addEventListener('click',run);
+function init(){
+  // Keep this panel OUTSIDE #report: Data Event renderReport() replaces
+  // #report.innerHTML whenever the report page or report date is rendered.
+  // A sibling is stable across those renders and does not affect old exports.
+  const report=$('report');
+  if(!report || $('drStopsPanel'))return;
+  const sec=document.createElement('section');
+  sec.id='drStopsPanel';
+  sec.className='card';
+  sec.style.display='none';
+  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (туршилт)</h3>'+
+    '<p><small>Data Event-ийн сонгосон ээлжийн засварын болон ашиглалтын зогсолтыг Excel-ийн тус тусын sheet-д оруулна. Өмнөх импорт, ERP Daily, «Мэдээ» хэсгийг өөрчлөхгүй.</small></p>'+
+    '<div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="'+localDay()+'"></label><label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div>'+
+    '<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>'+
+    '<button class="primary" type="button" id="drStopsExport">Засвар + Ашиглалтын зогсолт Excel татах</button>'+
+    '<p id="drStopsMsg" role="status" aria-live="polite"></p>';
+  report.parentNode.insertBefore(sec,report);
+  const sync=()=>{sec.style.display=(report.style.display==='none')?'none':'block';};
+  new MutationObserver(sync).observe(report,{attributes:true,attributeFilter:['style']});
+  sync();
+  $('drStopsExport').addEventListener('click',run);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
