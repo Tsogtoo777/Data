@@ -1806,5 +1806,39 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
 
 </script>
 <!-- WEEKLY 24H EXPORT D5 END -->
+<!-- ERP DAILY SEPARATE EXPORT BEGIN -->
+<script>
+(function(){'use strict';
+ const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const localDay=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+ const fmt=t=>new Date(t+8*3600000).toISOString().slice(0,16).replace('T',' ');
+ let busy=false;
+ function init(){const host=document.getElementById('report');if(!host||document.getElementById('erpDailySeparate'))return;
+ const section=document.createElement('section');section.id='erpDailySeparate';section.className='card';
+ section.innerHTML='<h3>ERP Daily тайлан · ТУСДАА</h3><p><small>Одоогийн Excel импорт болон ERP Excel экспортод нөлөөлөхгүй. DATA-ийн бүртгэлээс сонгосон ээлжийн мэдээллийг тусдаа Excel файлд гаргана.</small></p><div class="form-grid"><label>Огноо<input id="erdDay" type="date" value="'+localDay()+'"></label><label>Ээлж<select id="erdShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div><p><label>ERP Daily Excel загвар (сонголттой)<input id="erdTemplate" type="file" accept=".xlsx"></label></p><button id="erdExport" class="primary" type="button">ERP Daily тайлан татах</button><p id="erdMessage" aria-live="polite"></p>';
+ host.prepend(section);section.querySelector('#erdExport').onclick=run;
+ }
+ async function run(){if(busy)return;const section=document.getElementById('erpDailySeparate'),day=section.querySelector('#erdDay').value,shift=section.querySelector('#erdShift').value,file=section.querySelector('#erdTemplate').files[0],msg=section.querySelector('#erdMessage'),button=section.querySelector('#erdExport');
+ try{busy=true;button.disabled=true;msg.textContent='Мэдээлэл уншиж байна…';if(!activeSession)throw Error('DATA-д нэвтэрнэ үү.');if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw Error('Огноо буруу');if(typeof XLSX==='undefined')throw Error('Excel сан ачаалагдаагүй');
+ const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00'),hi=lo+12*3600000;
+ let rows=[],offset=0;while(true){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc&limit=1000&offset='+offset;
+ const page=await api(qs);if(!Array.isArray(page))throw Error('Бүртгэлийн хариу буруу');rows.push(...page);if(page.length<1000)break;offset+=page.length;if(offset>50000)throw Error('Хэт олон бүртгэл: мэдээллийг хувааж шалгана уу');}
+ const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));let issues=[],detail=[],agg=new Map();
+ for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round((end-start)/60000*100)/100;detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
+ if(!detail.length)throw Error('Энэ ээлжид бүртгэл олдсонгүй.');
+ // The provided workbook is preserved. Its business-critical formula cells are never overwritten.
+ let wb;if(file){if(file.size>25*1024*1024)throw Error('Загвар 25 MB-аас том');wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellStyles:true,cellFormula:true});}else wb=XLSX.utils.book_new();
+ const unique=n=>{let x=n,i=2;while(wb.SheetNames.includes(x))x=n.slice(0,26)+' '+i++;return x;};
+ const summary=[['ERP DAILY · ЭЭЛЖИЙН НЭГТГЭЛ'],['Огноо',day,'Ээлж',shift],['Техник','Төлөв','Нийт минут','Нийт цаг','Оператор']];for(const v of [...agg.values()].sort((a,b)=>a.name.localeCompare(b.name,'mn',{numeric:true})||a.status.localeCompare(b.status,'mn')))summary.push([v.name,v.status,Math.round(v.minutes*100)/100,Math.round(v.minutes/60*10000)/10000,[...v.operators].join(', ')]);
+ const details=[['Техник','Оператор','Төлөв','Эхэлсэн','Дууссан','Минут','Тайлбар','Бүртгэлийн ID'],...detail];
+ const a=XLSX.utils.aoa_to_sheet(summary),b=XLSX.utils.aoa_to_sheet(details);a['!cols']=[{wch:28},{wch:40},{wch:16},{wch:16},{wch:38}];b['!cols']=[{wch:28},{wch:30},{wch:38},{wch:20},{wch:20},{wch:14},{wch:55},{wch:18}];
+ XLSX.utils.book_append_sheet(wb,a,unique('DATA ээлжийн нэгтгэл'));XLSX.utils.book_append_sheet(wb,b,unique('DATA ээлжийн бүртгэл'));
+ if(issues.length){const c=XLSX.utils.aoa_to_sheet([['Шалгах асуудал'],...issues.map(x=>[x])]);c['!cols']=[{wch:90}];XLSX.utils.book_append_sheet(wb,c,unique('DATA шалгах зүйлс'));}
+ XLSX.writeFile(wb,'ERP_Daily_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'.xlsx');msg.textContent=detail.length+' бүртгэл, '+agg.size+' нэгтгэл гаргалаа. Шалгах асуудал: '+issues.length+'. Загварын үндсэн sheet-үүдийг өөрчлөөгүй.';
+ }catch(e){msg.textContent='Алдаа: '+e.message;}finally{busy=false;button.disabled=false;}}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+<!-- ERP DAILY SEPARATE EXPORT END -->
 </body>
 </html>
