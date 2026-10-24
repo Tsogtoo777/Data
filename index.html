@@ -2146,7 +2146,7 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
    const type=classify(e.status),dest=(type==='repair'||type==='planned')?'repair':type==='operating'?'operating':null;
    if(!dest){if(type==='unknown')ignored.add(e.status);continue;}
    const name=names.get(String(e.equipment_id));if(!name){warnings.push('Техник олдсонгүй: '+e.equipment_id);continue;}
-   groups[dest].push({id:e.id,name,operator:e.operator_name||'',status:String(e.status||'').replace(/\s*\|\s*ЭЦС.*$/i,''),start:st,end,hours:Math.round((end-st)/36000)/100});
+   groups[dest].push({id:e.id,name,operator:e.operator_name||'',status:String(e.status||'').replace(/\s*\|\s*ЭЦС.*$/i,''),erpStatus:String(e.status||'').trim(),start:st,end,hours:Math.round((end-st)/36000)/100});
   }
   if(!groups.repair.length&&!groups.operating.length)throw Error('Энэ ээлжинд засвар/ашиглалтын зогсолтын бүртгэл алга');
   if(ignored.size)warnings.push('Ангилаагүй төлөв: '+[...ignored].join(', '));
@@ -2157,7 +2157,7 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
   const zip=await JSZip.loadAsync(await file.arrayBuffer());
   const repPath=await targetPath(zip,'Засварын зогсолт'),opsPath=await targetPath(zip,'Ашиглалт зогсолт');
   const dayval=serial(Date.parse(day+'T00:00:00Z'));
-  const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт');
+  const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,H:e.erpStatus,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт');
   const ops=replaceRows(await zip.file(opsPath).async('string'),groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serialLocal(e.start),G:serialLocal(e.end)}),'Ашиглалт зогсолт');
   if(!confirm(day+' · '+shift+'\nЗасвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр\n\nХоосон мөрүүдэд нэмнэ. Хугацааны томьёог хадгална; эх Excel файлыг өөрчлөхгүй. Татах уу?'))return;
   zip.file(repPath,rep.xml);zip.file(opsPath,ops.xml);
@@ -2184,7 +2184,7 @@ function init(){
   sec.id='drStopsPanel';
   sec.className='card';
   sec.style.display='none';
-  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (засварласан)</h3>'+
+  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (ERP төлөвтэй)</h3>'+
     '<p><small>Data Event-ийн сонгосон ээлжийн засварын болон ашиглалтын зогсолтыг Excel-ийн тус тусын sheet-д оруулна. Өмнөх импорт, ERP Daily, «Мэдээ» хэсгийг өөрчлөхгүй.</small></p>'+
     '<div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="'+localDay()+'"></label><label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div>'+
     '<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>'+
