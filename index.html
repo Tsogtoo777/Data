@@ -2107,7 +2107,15 @@ function replaceRows(xml,data,fields,sheet){
   if(inputCols.some(col=>occupiedCell(exactCell(row,col,n))))return row;
   const entry=data[offset];
   let changed=row;
-  for(const [col,val] of Object.entries(fields(entry)))if(val!==null&&val!==undefined&&val!=='')changed=cell(changed,col,n,val);
+  const values=fields(entry);
+  for(const [col,val] of Object.entries(values))if(val!==null&&val!==undefined&&val!=='')changed=cell(changed,col,n,val);
+  if(sheet==='Засварын зогсолт'){
+   const expected=String(values.H||'').trim();
+   if(!expected)throw Error('ERP эвдрэлийн шалтгаан дутуу: '+n+'-р мөр');
+   const written=exactCell(changed,'H',n);
+   if(!written.includes('<t xml:space="preserve">'+esc(expected)+'</t>'))
+     throw Error('H'+n+' баганад ERP төлөв бичигдсэнгүй. Экспорт зогслоо.');
+  }
   offset++;
   return changed;
  });
@@ -2159,6 +2167,10 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
   const dayval=serial(Date.parse(day+'T00:00:00Z'));
   const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,H:e.erpStatus,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт');
   const ops=replaceRows(await zip.file(opsPath).async('string'),groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serialLocal(e.start),G:serialLocal(e.end)}),'Ашиглалт зогсолт');
+  // Strictly confirm every newly written repair ERP reason before producing an Excel file.
+  const hCells=[...rep.xml.matchAll(/<c\b(?=[^>]*\br="H\d+")[^>]*>[\s\S]*?<\/c>/g)]
+     .filter(m=>/<t(?:\s[^>]*)?>[^<]+<\/t>/.test(m[0]));
+  if(hCells.length<groups.repair.length)throw Error('Шалгалт амжилтгүй: ERP эвдрэлийн шалтгаан бүрэн бичигдээгүй.');
   if(!confirm(day+' · '+shift+'\nЗасвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр\n\nХоосон мөрүүдэд нэмнэ. Хугацааны томьёог хадгална; эх Excel файлыг өөрчлөхгүй. Татах уу?'))return;
   zip.file(repPath,rep.xml);zip.file(opsPath,ops.xml);
   // Request an Excel recalculation so the existing duration formulas update from new start/end dates.
@@ -2171,8 +2183,8 @@ async function run(){const root=$('drStopsPanel'),msg=$('drStopsMsg'),btn=$('drS
    }):wbXml.replace('</workbook>','<calcPr fullCalcOnLoad="1" forceFullCalc="1" calcMode="auto"/></workbook>');
    zip.file('xl/workbook.xml',updated);
   }
-  const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_STOPS.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
-  msg.textContent='Бэлэн: засвар '+rep.count+', ашиглалт '+ops.count+' мөр. Мото цаг, бусад sheet-ийг өөрчлөөгүй.'+(warnings.length?' Анхааруулга: '+warnings.join('; '):'');
+  const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_STOPS_H_VERIFIED.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  msg.textContent='H баганын ERP төлөв шалгагдсан. Бэлэн: засвар '+rep.count+', ашиглалт '+ops.count+' мөр. Мото цаг, бусад sheet-ийг өөрчлөөгүй.'+(warnings.length?' Анхааруулга: '+warnings.join('; '):'');
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;}}
 function init(){
   // Keep this panel OUTSIDE #report: Data Event renderReport() replaces
@@ -2184,7 +2196,7 @@ function init(){
   sec.id='drStopsPanel';
   sec.className='card';
   sec.style.display='none';
-  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт (ERP төлөвтэй)</h3>'+
+  sec.innerHTML='<h3>Daily Report · Засварын / Ашиглалтын зогсолт · H багана шалгадаг v3</h3>'+
     '<p><small>Data Event-ийн сонгосон ээлжийн засварын болон ашиглалтын зогсолтыг Excel-ийн тус тусын sheet-д оруулна. Өмнөх импорт, ERP Daily, «Мэдээ» хэсгийг өөрчлөхгүй.</small></p>'+
     '<div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="'+localDay()+'"></label><label>Ээлж<select id="drStopsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div>'+
     '<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>'+
