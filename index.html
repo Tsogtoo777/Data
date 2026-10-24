@@ -1836,7 +1836,20 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  if(issues.length){const c=XLSX.utils.aoa_to_sheet([['Шалгах асуудал'],...issues.map(x=>[x])]);c['!cols']=[{wch:90}];XLSX.utils.book_append_sheet(wb,c,unique('DATA шалгах зүйлс'));}
  XLSX.writeFile(wb,'ERP_Daily_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'.xlsx');msg.textContent=detail.length+' бүртгэл, '+agg.size+' нэгтгэл гаргалаа. Шалгах асуудал: '+issues.length+'. Загварын үндсэн sheet-үүдийг өөрчлөөгүй.';
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{busy=false;button.disabled=false;}}
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+ function ensureShortcut(){
+ const nav=document.querySelector('nav');if(!nav||document.getElementById('erdNavButton'))return;
+ const b=document.createElement('button');b.id='erdNavButton';b.type='button';b.textContent='📊 ERP Daily тайлан';
+ b.style.cssText='border:2px solid #ff842e;color:#ffb37e;font-weight:800';
+ const logout=document.getElementById('logoutButton');nav.insertBefore(b,logout||null);
+ b.addEventListener('click',()=>{
+   const reportButton=document.querySelector('[data-page="report"]');
+   if(reportButton)reportButton.click();
+   setTimeout(()=>{init();const section=document.getElementById('erpDailySeparate');if(section){section.scrollIntoView({behavior:'smooth',block:'start'});}else alert('ERP Daily хэсгийг ачаалж чадсангүй.');},100);
+ });
+ }
+ function ensure(){init();ensureShortcut();}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure);else ensure();
+ setInterval(ensure,1500);
 })();
 </script>
 <!-- ERP DAILY SEPARATE EXPORT END -->
