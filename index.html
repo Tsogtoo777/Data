@@ -748,7 +748,7 @@ function isDrill(item) {
 }
 // Block/level tracking (requires separate reviewed SQL migration).
 let blockLocations = [];
-function isExcavator(item){return !!item && /pc\s*3000|pc\s*4000|экскаватор|excavator/i.test(String(item.name||'')+' '+String(item.equipment_type||''));}
+function isExcavator(item){return !!item && /pc\s*3000|pc\s*4000|(?:^|[^0-9])994(?:h)?(?:[^0-9]|$)|экскаватор|excavator/i.test(String(item.name||'')+' '+String(item.equipment_type||''));}
 function locationEquipment(item){return isDrill(item)||isExcavator(item);}
 function locationFor(id){return blockLocations.find(x=>String(x.equipment_id)===String(id));}
 function equipmentLocationCard(item){
@@ -782,7 +782,7 @@ async function changeBlock(equipmentId){
   blockLocations=await api('equipment_block_locations?select=*');render();renderProduction();toast('Блок, түвшин хадгалагдлаа.');
  }catch(e){toast('Байршил хадгалах алдаа: '+e.message);}
 }
-const MATERIAL_TYPES = ["Хөрс", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Сульфид хүдэр", "Балансын сульфид хүдэр", "Бусад", "Замын дэвсэлт", "Шимт хөрс"];
+const MATERIAL_TYPES = ["Хөрс", "Замын дэвсэлт", "Шимт хөрс", "Сульфидын хүдэр", "Балансын бус Сульфидын хүдэр", "Исэлдсэн хүдэр", "Балансын бус исэлдсэн хүдэр", "Бутлуур", "Бусад", "Далан", "Сульфидын хүдэр их", "Сульфидын хүдэр бага"];
 let activeProductionGroup = "truck";
 function productionGroup(item){return is830(item)?"truck":isDrill(item)?"drill":null;}
 function productionSlotMode(day,hour,now=new Date()){
@@ -838,7 +838,7 @@ function renderProduction() {
   const selected = allowed.some(x=>String(x.id)===String(previous)) ? previous : String(allowed[0]?.id ?? "");
   const itemOptions = allowed.map(x => '<option value="'+esc(x.id)+'"'+(String(x.id)===String(selected)?" selected":"")+'>'+esc(x.name)+' — '+esc(equipmentMeasure(x))+'</option>').join("");
   const currentItem = equipment.find(x => String(x.id) === String(selected));
-  const excavators = equipment.filter(x => /pc\s*3000|pc\s*4000/i.test(String(x.name || "")) || /экскаватор|excavator/i.test(String(x.name || "") + " " + String(x.equipment_type || "")));
+  const excavators = equipment.filter(isExcavator);
   const priorDump=document.getElementById('productionDump')?.value||'';
   const priorMaterial=document.getElementById('productionMaterial')?.value||'';
   const dumpOptions = '<option value="">Ачуулсан экскаватор сонгох (заавал)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'"'+(String(x.id)===String(priorDump)?' selected':'')+'>'+esc(x.name)+'</option>').join("");
