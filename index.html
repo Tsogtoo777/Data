@@ -799,10 +799,10 @@ function historicalProductionFields(day,hour,target){
  const loc=locationFor(target?.id)||{};
  const blocks=[...new Set([...productionLogs,...blockLocations].map(x=>x.block_code).filter(Boolean))];
  const levels=[...new Set([...productionLogs,...blockLocations].map(x=>x.level_name).filter(Boolean))];
- return '<fieldset style="margin-top:12px;border:1px solid #ff6b1b;border-radius:10px;padding:12px"><legend>Ажлын байршил</legend>'+
- '<p><small>Сонгосон техникийн одоогийн байршлаас автоматаар бөглөв. Тухайн цагт өөр байршилтай байсан бол засна уу. Цаг өнгөрсөн ч дахин баталгаажуулахгүй.</small></p>'+
- '<div class="form-grid"><label>Блок<input value="'+esc(loc.block_code||'')+'" id="productionHistoricalBlock" list="productionBlockChoices" placeholder="Жишээ: BL42" autocomplete="off" maxlength="40" required></label>'+
- '<label>Түвшин<input value="'+esc(loc.level_name||'')+'" id="productionHistoricalLevel" list="productionLevelChoices" placeholder="Жишээ: 980–970" autocomplete="off" maxlength="80" required></label></div>'+
+ return '<fieldset style="margin-top:12px;border:1px solid #ff6b1b;border-radius:10px;padding:12px"><legend>Ажлын байршил (заавал биш)</legend>'+
+ '<p><small>Сонгосон техникийн одоогийн байршлаас автоматаар бөглөв. Тухайн цагт өөр байршилтай байсан бол засна уу. Мэдэхгүй бол хоосон үлдээгээд хадгалж болно. Дараа нь EDIT дээр нөхөж оруулна.</small></p>'+
+ '<div class="form-grid"><label>Блок (заавал биш)<input value="'+esc(loc.block_code||'')+'" id="productionHistoricalBlock" list="productionBlockChoices" placeholder="Жишээ: BL42" autocomplete="off" maxlength="40"></label>'+
+ '<label>Түвшин (заавал биш)<input value="'+esc(loc.level_name||'')+'" id="productionHistoricalLevel" list="productionLevelChoices" placeholder="Жишээ: 980–970" autocomplete="off" maxlength="80"></label></div>'+
  '<datalist id="productionBlockChoices">'+blocks.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>'+
  '<datalist id="productionLevelChoices">'+levels.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>'+
  '<small>Энд зассан байршил зөвхөн нэмэх бүтээлд хамаарна.</small></fieldset>';
@@ -818,8 +818,9 @@ document.addEventListener('change',event=>{if(event.target.id==='productionDump'
 
 function historicalProductionLocation(block,level){
  block=String(block||'').trim().toUpperCase();level=String(level||'').trim();
- if(!/^BL[0-9]+[A-ZА-ЯӨҮ0-9-]*$/i.test(block)||block.length>40||!level||level.length>80)throw Error('Тухайн үеийн блокийг BL42 хэлбэрээр, түвшинг заавал бөглөнө үү.');
- return {block_code:block,level_name:level};
+ if(block&&(!/^BL[0-9]+[A-ZА-ЯӨҮ0-9-]*$/i.test(block)||block.length>40))throw Error('Блок бөглөсөн бол BL42 хэлбэрээр оруулна уу.');
+ if(level.length>80)throw Error('Түвшин 80 тэмдэгтээс урт байна.');
+ return {block_code:block||null,level_name:level||null};
 }
 let productionSaveBusy=false;
 async function saveProduction(){
