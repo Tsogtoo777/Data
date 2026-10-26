@@ -912,19 +912,9 @@ async function saveProductionOnce() {
 }
 function renderReport() {
   const day = document.getElementById("reportDate")?.value || localDateValue();
-  const dailyEvents = events.filter(e=>localDateValue(new Date(e.start_time))===day);
   const dailyProduction = productionLogs.filter(e=>e.production_date===day);
-  const byStatus = {};
-  dailyEvents.forEach(e=>{
-    const start=new Date(e.start_time).getTime();
-    const end=e.end_time?new Date(e.end_time).getTime():Date.now();
-    byStatus[e.status]=(byStatus[e.status]||0)+Math.max(0,end-start);
-  });
-  const durationRows=Object.keys(byStatus).sort().map(s=>'<div class="log"><b>'+esc(s)+'</b><span>'+((byStatus[s]/3600000).toFixed(2))+' цаг</span><span></span><span></span></div>').join("");
   const prodRows=dailyProduction.map(x=>{const eq=equipment.find(e=>String(e.id)===String(x.equipment_id));return '<div class="log"><b>'+esc(eq?eq.name:x.equipment_id)+'</b><span>'+esc(x.amount)+' '+esc(x.measure_type)+'</span><span>'+esc(x.hour_slot)+':00</span><span>'+(x.material_type?esc(x.material_type)+' · ':'')+esc(x.operator_name||"-")+'</span></div>';}).join("");
   document.getElementById("report").innerHTML='<div class="card"><b>Өдөр / ээлжийн тайлан</b><label style="display:block;margin-top:8px">Огноо<input id="reportDate" type="date" value="'+esc(day)+'"></label><button class="primary" id="exportDailyReport" style="margin-top:8px">Өдрийн тайлан Excel татах</button></div>'+
-  '<div class="stats"><div class="stat">Төлөвийн бүртгэл<b>'+dailyEvents.length+'</b></div><div class="stat">Бүтээлийн бүртгэл<b>'+dailyProduction.length+'</b></div><div class="stat">Тууш метр<b>'+dailyProduction.filter(x=>x.measure_type==="тууш метр").reduce((a,x)=>a+Number(x.amount||0),0).toLocaleString("mn-MN")+'</b></div><div class="stat">Рейс<b>'+dailyProduction.filter(x=>x.measure_type==="рейс").reduce((a,x)=>a+Number(x.amount||0),0).toLocaleString("mn-MN")+'</b></div></div>'+
-  '<div class="card"><b>Төлөвт зарцуулсан хугацаа (ойролцоо)</b><small>Бүртгэлийн эхлэл/төгсгөлөөр тооцсон; нээлттэй төлөв өнөөг хүртэл тооцогдоно.</small>'+(durationRows||'<p><small>Төлөвийн бүртгэл алга.</small></p>')+'</div>'+
   '<div class="card"><b>Өдрийн бүтээл</b>'+(prodRows||'<p><small>Бүтээлийн бүртгэл алга.</small></p>')+'</div>';
 }
 // Excel export only: sort copies, never mutate the original data arrays.
@@ -2043,58 +2033,8 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
    return result;
  };
 
- async function drRun(){
-   const sec=document.getElementById('drNewsSeparate'),btn=sec.querySelector('#drNewsExport'),msg=sec.querySelector('#drNewsMessage');
-   try{
-     btn.disabled=true;msg.textContent='Бүртгэл шалгаж байна…';
-     const day=sec.querySelector('#drNewsDate').value,shift=sec.querySelector('#drNewsShift').value,file=sec.querySelector('#drNewsTemplate').files[0];
-     if(!activeSession)throw Error('Data Event-д нэвтэрнэ үү');if(!file)throw Error('Daily_Report_2026 Main.xlsx загвараа сонгоно уу');
-     if(file.size>35*1024*1024)throw Error('Загвар хэт том байна');
-     if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw Error('Огноо сонгоно уу');
-     const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00'),hi=lo+43200000;window._drBounds={lo,hi};
-     if(hi>Date.now())throw Error('Ээлж хараахан дуусаагүй байна');
-     const zip=await JSZip.loadAsync(await file.arrayBuffer());
-     const workbook=await zip.file('xl/workbook.xml')?.async('string');if(!workbook||!workbook.includes('name="Мэдээ"'))throw Error('Энэ Excel-д «Мэдээ» sheet алга');
-     // Locate sheet by workbook relationships, rather than assuming its physical XML filename.
-     const found=/<sheet\b(?=[^>]*name="Мэдээ")[^>]*r:id="([^"]+)"/.exec(workbook);if(!found)throw Error('«Мэдээ» sheet ID алга');
-     const rels=await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
-     const rel=new RegExp('<Relationship\\b(?=[^>]*Id="'+found[1]+'")([^>]+)\\/?>').exec(rels||'');if(!rel)throw Error('Sheet зам олдсонгүй');
-     const target=/Target="([^"]+)"/.exec(rel[1])?.[1];const part=target?.startsWith('/')?target.slice(1):('xl/'+target);if(!part||!zip.file(part))throw Error('«Мэдээ» XML олдсонгүй');
-     let xml=await zip.file(part).async('string');
-     // Don't write data if the expected 18 equipment rows are missing.
-     for(const n of [shift==='өдөр'?27:72,shift==='өдөр'?44:89])if(!new RegExp('<row\\b[^>]*\\br="'+n+'"').test(xml))throw Error('«Мэдээ» хүснэгтийн мөрийн бүтэц өөр байна');
-     // Fail closed if the uploaded workbook has a different template row order.
-     const sharedXml=await zip.file('xl/sharedStrings.xml')?.async('string');
-     if(!sharedXml)throw Error('Excel загварын нэрсийн хүснэгт байхгүй');
-     const shareDoc=new DOMParser().parseFromString(sharedXml,'application/xml');
-     const strings=Array.from(shareDoc.getElementsByTagNameNS('*','si')).map(n=>n.textContent||'');
-     const rowNames=['Sandvik DI650I','Sandvik 410iE-01 229','Sandvik 410iE-02 165','PC4000','PC3000-6D','Komatsu 830E 276','Komatsu 830E 296','Komatsu 830E 297','Komatsu 830E 303','Komatsu 830E 304','Komatsu 830E 305','Komatsu 830E 306','CAT994','WA 900','CAT D10T-01','CAT 16M-01','CAT 16M-02','Water truck-01'];
-     const first=shift==='өдөр'?27:72;
-     for(let i=0;i<18;i++){
-       const r=first+i,rm=new RegExp('<row\\b[^>]*\\br="'+r+'"[^>]*>([\\s\\S]*?)<\\/row>').exec(xml);
-       if(!rm)throw Error('Мэдээ sheet-ийн мөр байхгүй: '+r);
-       const cm=new RegExp('<c\\b(?=[^>]*\\br="B'+r+'")[^>]*>([\\s\\S]*?)<\\/c>').exec(rm[1]);
-       const idx=cm?new RegExp("<v>([0-9]+)</v>").exec(cm[1]):null;
-       const actual=idx?strings[Number(idx[1])]||'':'';
-       if(equipKey(actual)!==equipKey(rowNames[i]))throw Error('Excel-ийн '+r+'-р мөрийн техник таарахгүй: '+actual);
-     }
-     const rows=[];for(let offset=0;;offset+=1000){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc,id.asc&limit=1000&offset='+offset;const batch=await api(qs);if(!Array.isArray(batch))throw Error('Data Event-ийн бүртгэл татагдсангүй');rows.push(...batch);if(batch.length<1000)break;if(offset>50000)throw Error('Хэт олон бүртгэл');}
-     const records=rows.filter(e=>Date.parse(e.start_time)<hi&&(e.end_time===null||Date.parse(e.end_time)>lo));if(!records.length)throw Error('Тухайн ээлжийн бүртгэл байхгүй');
-     const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));
-     const result=drExportIntoNewsSheet(xml,records,shift,names);if(!result.edited)throw Error('Техникийн нэр таарсангүй');
-     if(!confirm(day+' · '+shift+' ээлж\n«Мэдээ» sheet-д '+result.edited+' техникийн оператор, тайлбарыг шинэчилнэ.\nМото цаг, бэлэн байдлын томьёо, бусад sheet-ийг өөрчлөхгүй.\nҮргэлжлүүлэх үү?')){msg.textContent='Цуцалсан';return;}
-     zip.file(part,result.xml);const out=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-     const url=URL.createObjectURL(out),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_MEDEE_PREVIEW.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
-     msg.textContent='«Мэдээ» sheet-ийн '+result.edited+' техникийн оператор, зогсолтын тайлбарыг бөглөв. '+(result.warn.length?'Бүртгэлгүй: '+result.warn.join('; '):'')+' | Мото цаг, бэлэн байдлын тооцоог зориуд өөрчлөөгүй. Эхлээд шалгаарай.';
-   }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;}
- }
- function drInit(){const host=document.getElementById('report');if(!host||document.getElementById('drNewsSeparate'))return;
-   const sec=document.createElement('section');sec.id='drNewsSeparate';sec.className='card';
-   sec.innerHTML='<h3>Daily Report · Мэдээ (туршилт)</h3><p><small>Зөвхөн «Мэдээ» sheet-ийн оператор, зогсолтын цагтай тайлбарыг бөглөнө. Мото цаг, бэлэн байдлын томьёо болон хуучин Excel импорт/экспортод хүрэхгүй.</small></p><div class="form-grid"><label>Огноо<input id="drNewsDate" type="date" value="'+localDay()+'"></label><label>Ээлж<select id="drNewsShift"><option value="өдөр">Өдөр 07:00–19:00</option><option value="шөнө">Шөнө 19:00–07:00</option></select></label></div><p><label>Daily Report загвар<input type="file" id="drNewsTemplate" accept=".xlsx"></label></p><button type="button" class="primary" id="drNewsExport">Мэдээ Excel татах (туршилт)</button><p id="drNewsMessage" aria-live="polite"></p>';
-   host.prepend(sec);sec.querySelector('#drNewsExport').addEventListener('click',drRun);
- }
 
- function ensure(){init();drInit();ensureShortcut();}
+ function ensure(){init();ensureShortcut();}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure);else ensure();
  setInterval(ensure,1500);
 })();
