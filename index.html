@@ -1987,9 +1987,9 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
        const op=String(e.operator_name||'').trim();if(op&&!ops.includes(op))ops.push(op);
        const status=String(e.status||'').replace(/\s*\|\s*ЭЦС.*$/i,'').trim();
        if(/бүтээлтэй/i.test(status))continue;
-       if(!e.end_time)continue; // Source has no actual end time: never invent 07:00.
+       if(!e.end_time)continue; // All snapshots receive an Excel-only clipped end.
        const st=Math.max(Date.parse(e.start_time),window._drBounds.lo),ed=Math.min(Date.parse(e.end_time),window._drBounds.hi);
-       if(Number.isFinite(st)&&Number.isFinite(ed)&&ed>st)downtimes.push(drDateLabel(st)+'–'+drDateLabel(ed)+' '+status);
+       if(Number.isFinite(st)&&Number.isFinite(ed)&&ed>st)downtimes.push(drDateLabel(st)+'–'+drDateLabel(ed)+' '+status+(e._reportWasOpen?' (явцын)':''));
      }
      if(ops.length)row=drPutCell(row,'C',n,ops.join(', '));
      row=drPutCell(row,'J',n,downtimes.join('\n'));edited++;
@@ -2172,35 +2172,49 @@ const serialLocal=ms=>serial(ms)+8/24;
 function bounds(day,shift){const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00');return {lo,hi:lo+43200000};}
 async function fetchEvents(lo,hi){const a=[];for(let offset=0;offset<60000;offset+=1000){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc,id.asc&limit=1000&offset='+offset;const batch=await api(qs);if(!Array.isArray(batch))throw Error('Бүртгэл татаж чадсангүй');a.push(...batch);if(batch.length<1000)return a;}throw Error('Хэт олон бүртгэл');}
 function classify(status){const c=DataStatusCatalog.category(status);return c?.key||'unknown';}
-async function run(all=false){const msg=$('drStopsMsg'),btn=$(all?'drAllExport':'drStopsExport');btn.disabled=true;
+
+// Excel-only snapshot. Never mutates source records or writes to Supabase.
+function dailyReportSnapshot(rows,lo,hi,asOf){
+ if(!Number.isFinite(lo)||!Number.isFinite(hi)||hi<=lo||!Number.isFinite(asOf))throw Error('Тайлангийн хугацаа буруу');
+ const cutoff=Math.min(hi,asOf);if(cutoff<=lo)throw Error('Ээлж хараахан эхлээгүй байна');
+ const result=[],seen=new Set();
+ for(const row of rows){
+  if(row.id!=null&&seen.has(String(row.id)))continue;
+  if(row.id!=null)seen.add(String(row.id));
+  const start=Date.parse(row.start_time),open=!row.end_time;
+  const originalEnd=open?cutoff:Date.parse(row.end_time);
+  if(!Number.isFinite(start)||!Number.isFinite(originalEnd)||(!open&&originalEnd<=start))throw Error('Бүртгэлийн цаг буруу: ID '+row.id);
+  const a=Math.max(start,lo),b=Math.min(originalEnd,cutoff);if(b<=a)continue;
+  result.push({...row,start_time:new Date(a).toISOString(),end_time:new Date(b).toISOString(),_reportWasOpen:open});
+ }
+ const byEquipment=new Map();for(const row of result){const key=String(row.equipment_id);if(!byEquipment.has(key))byEquipment.set(key,[]);byEquipment.get(key).push(row);}
+ for(const list of byEquipment.values()){list.sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));for(let i=1;i<list.length;i++)if(Date.parse(list[i].start_time)<Date.parse(list[i-1].end_time))throw Error('Давхардсан бүртгэл: ID '+list[i-1].id+' / '+list[i].id+'. EDIT дээр шалгана уу.');}
+ return {records:result,cutoff,openCount:result.filter(x=>x._reportWasOpen).length,partial:cutoff<hi};
+}
+let dailyReportExportBusy=false;
+
+async function run(all=false){if(dailyReportExportBusy)return;dailyReportExportBusy=true;const msg=$('drStopsMsg'),btn=$(all?'drAllExport':'drStopsExport');btn.disabled=true;
  try{
   const day=$('drStopsDate').value,shift=$('drStopsShift').value,file=$('drStopsTemplate').files[0];
   if(!activeSession)throw Error('Нэвтэрнэ үү');if(!file)throw Error('Daily Report Excel загвараа сонгоно уу');
   if(!/^\d{4}-\d\d-\d\d$/.test(day))throw Error('Огноо буруу');if(file.size>35e6)throw Error('Загвар 35 MB-аас том байна');
-  const {lo,hi}=bounds(day,shift);if(lo>Date.now())throw Error('Ээлж хараахан эхлээгүй байна');
+  const {lo,hi}=bounds(day,shift),asOf=Date.now();if(lo>=asOf)throw Error('Ээлж хараахан эхлээгүй байна');
   msg.textContent='Өгөгдөл уншиж байна…';
   const ev=await fetchEvents(lo,hi),names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));
   const groups={repair:[],operating:[]},ignored=new Set(),warnings=[];
-  const completed=[],seenIds=new Set();let openSkipped=0;
-  for(const e of ev){
-   // The export copies recorded intervals only, never synthesizes the end of an open event.
-   if(e.id!=null&&seenIds.has(String(e.id)))continue;
-   if(e.id!=null)seenIds.add(String(e.id));
-   if(!e.end_time){openSkipped++;continue;}
-   let st=Date.parse(e.start_time),end=Date.parse(e.end_time);
-   if(!Number.isFinite(st)||!Number.isFinite(end)||end<=st){warnings.push('Хугацаа буруу: '+e.id);continue;}
-   st=Math.max(st,lo);end=Math.min(end,hi);if(end<=st)continue;
-   completed.push(e);
+  const snapshot=dailyReportSnapshot(ev,lo,hi,asOf),completed=snapshot.records;
+  const cutoffLabel=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',dateStyle:'short',timeStyle:'medium',hour12:false}).format(new Date(snapshot.cutoff));
+  for(const e of completed){
+   const st=Date.parse(e.start_time),end=Date.parse(e.end_time);
    const type=classify(e.status);
    // Import only recorded, cataloged stoppages; never make extra repair/idle entries.
    const dest=['repair','planned','supply'].includes(type)?'repair':
      ['operating','normative','ready','external'].includes(type)?'operating':null;
    if(!dest){if(type==='unknown')ignored.add(String(e.status||''));continue;}
    const name=names.get(String(e.equipment_id));if(!name){warnings.push('Техник олдсонгүй: '+e.equipment_id);continue;}
-   groups[dest].push({id:e.id,name,operator:e.operator_name||'',status:String(e.status||'').replace(/\s*\|\s*ЭЦС.*$/i,''),erpStatus:String(e.status||'').trim(),start:st,end,hours:(end-st)/3600000});
+   groups[dest].push({id:e.id,name,operator:e.operator_name||'',status:String(e.status||'').replace(/\s*\|\s*ЭЦС.*$/i,'')+(e._reportWasOpen?' (явцын)':''),erpStatus:String(e.status||'').trim(),start:st,end,hours:(end-st)/3600000});
   }
-  if(!completed.length)throw Error('Энэ ээлжинд дууссан, бүртгэгдсэн төлөв байхгүй. Зохиомол мэдээлэл нэмэхгүй.');
-  if(openSkipped)warnings.push('Дуусах цаггүй '+openSkipped+' бүртгэлийг бичээгүй (хаагдсаны дараа орно)');
+  if(!completed.length)throw Error('Сонгосон хугацаанд бүртгэл алга.');
   if(!groups.repair.length&&!groups.operating.length&&!all)throw Error('Энэ ээлжинд засвар/ашиглалтын зогсолтын бүртгэл алга');
   if(ignored.size)warnings.push('Ангилаагүй төлөв: '+[...ignored].join(', '));
   // Reject overlaps *within a classification* for same equipment. No silent double-counting.
@@ -2223,10 +2237,10 @@ async function run(all=false){const msg=$('drStopsMsg'),btn=$(all?'drAllExport':
   let news=null;
   if(all){
    if(typeof window.__drApplyNewsToZip!=='function')throw Error('Мэдээ тайлангийн холбоос ачаалагдсангүй');
-   news=await window.__drApplyNewsToZip(zip,ev,shift,names,lo,hi);
+   news=await window.__drApplyNewsToZip(zip,completed,shift,names,lo,snapshot.cutoff);
   }
-  const summary=day+' · '+shift+'\n'+(all?'Мэдээ: '+news.edited+' техник\n':'')+'Засвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр'+
-   '\n\n'+(all?'Data Event-ийн бодит дууссан бүртгэлийг л хуулна. Мото цаг өөрчлөгдөхгүй.\n':'')+
+  const summary=day+' · '+shift+'\nТооцсон хугацааны төгсгөл: '+cutoffLabel+'\n'+(snapshot.partial?'ЯВЦЫН МЭДЭЭ - ээлж дуусаагүй.\n':'')+'Нээлттэй '+snapshot.openCount+' төлвийг зөвхөн Excel-д хугацаагаар тасалж тооцов.\nDATA дахь төлвийг хаахгүй.\n'+(all?'Мэдээ: '+news.edited+' техник\n':'')+'Засвар: '+rep.count+' мөр\nАшиглалт: '+ops.count+' мөр'+
+   '\n\n'+(all?'Бүртгэлтэй төлвийг сонгосон хугацаанд тооцно. Мото цаг өөрчлөгдөхгүй.\n':'')+
    'Өмнөх тухайн ээлжийн мөр: засвар '+rep.previous+', ашиглалт '+ops.previous+'\n'+
    (allowReplace?'Зөвхөн сонгосон ээлжийн мөрүүдийг шинэчилнэ.':'Зөвхөн шинэ ээлжийн мэдээлэл нэмнэ.')+
    ' Хугацааны томьёо болон бусад ээлж хэвээр. Эх Excel өөрчлөгдөхгүй. Татах уу?';
@@ -2242,12 +2256,12 @@ async function run(all=false){const msg=$('drStopsMsg'),btn=$(all?'drAllExport':
    }):wbXml.replace('</workbook>','<calcPr fullCalcOnLoad="1" forceFullCalc="1" calcMode="auto"/></workbook>');
    zip.file('xl/workbook.xml',updated);
   }
-  const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+(all?'_3_SHEETS_RECORDED.xlsx':'_STOPS_NO_DUPLICATES.xlsx');a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
-  msg.textContent=(all?'Гурван sheet бэлэн: Мэдээ '+news.edited+' техник, ':'H баганын ERP төлөв шалгагдсан. Бэлэн: ')+
+  const output=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}),url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download='Daily_Report_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+(all?'_3_SHEETS':'_STOPS')+((snapshot.partial||snapshot.openCount)?'_PROVISIONAL':'')+'_ASOF_'+new Date(snapshot.cutoff+8*3600000).toISOString().slice(0,19).replace(/[-:T]/g,'')+'.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  msg.textContent='Тооцсон хугацааны төгсгөл: '+cutoffLabel+' · Нээлттэй '+snapshot.openCount+' төлөв Excel-д тооцсон; DATA-д хаагаагүй. '+(snapshot.partial?'ЯВЦЫН МЭДЭЭ. ':'')+(all?'Гурван sheet бэлэн: Мэдээ '+news.edited+' техник, ':'H баганын ERP төлөв шалгагдсан. Бэлэн: ')+
     'засвар '+rep.count+', ашиглалт '+ops.count+' мөр. Өмнөх ижил ээлжийн мөр: засвар '+rep.previous+', ашиглалт '+ops.previous+'. Мото цагийг өөрчлөөгүй.'+
     (news&&news.warn.length?' Мэдээнд бүртгэлгүй: '+news.warn.join('; ')+'.':'')+
     (warnings.length?' Анхааруулга: '+warnings.join('; '):'');
- }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;}}
+ }catch(e){msg.textContent='Алдаа: '+e.message;}finally{btn.disabled=false;dailyReportExportBusy=false;}}
 function init(){
   // Keep this panel OUTSIDE #report: Data Event renderReport() replaces
   // #report.innerHTML whenever the report page or report date is rendered.
@@ -2258,8 +2272,8 @@ function init(){
   sec.id='drStopsPanel';
   sec.className='card';
   sec.style.display='none';
-  sec.innerHTML='<h3>Daily Report · 3 sheet (зөвхөн бүртгэлтэй мэдээлэл)</h3>'+
-    '<p><small>Data Event-ийн хаагдсан бодит бүртгэлээс «Мэдээ», «Засварын зогсолт», «Ашиглалт зогсолт» sheet-үүдийг бөглөнө. Дуусах цаггүй бүртгэлийг сунгахгүй, нэмэлт зогсолт зохиохгүй. Мото цагт хүрэхгүй.</small></p>'+
+  sec.innerHTML='<h3>Daily Report · 3 sheet (явцын мэдээ татаж болно)</h3>'+
+    '<p><small>«Мэдээ», «Засварын зогсолт», «Ашиглалт зогсолт»-ыг сонгосон ээлжийн эхлэлээс татах үеийн цаг хүртэл бөглөнө (ээлж дууссан бол төгсгөл хүртэл). Нээлттэй төлвийг Excel-д «явцын» гэж тэмдэглэнэ; DATA-д хаахгүй. Мото цагт хүрэхгүй.</small></p>'+
     '<div class="form-grid"><label>Огноо<input type="date" id="drStopsDate" value="2026-10-24"></label><label>Ээлж<select id="drStopsShift"><option value="шөнө" selected>Шөнө 19:00–07:00</option><option value="өдөр">Өдөр 07:00–19:00</option></select></label></div>'+
     '<p><label>Daily_Report_2026 Main.xlsx загвар<input type="file" id="drStopsTemplate" accept=".xlsx"></label></p>'+
     '<p><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="drReplaceExistingShift" style="width:auto;min-height:0;"> <span>Сонгосон ээлж Excel-д өмнө бөглөгдсөн бол зөвхөн тэр ээлжийн зогсолтын мөрүүдийг шинэчилж солих (бусад өдөр, ээлжийг хадгална)</span></label></p>'+
