@@ -2456,6 +2456,26 @@ const interval=15000,paths={
  events:'equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,smu,km,comment&order=start_time.desc,id.desc',
  production:'production_logs?select=*&order=created_at.desc,id.desc'
 };
+function makeSyncHealthNotice(){
+ let missed=0,lastSuccess=0,node=null;
+ function ensure(){
+  if(node)return node;
+  node=document.createElement('div');
+  node.id='ets-sync-stale-warning';
+  node.setAttribute('role','status');
+  node.setAttribute('aria-live','polite');
+  node.style.cssText='position:fixed;top:72px;right:12px;z-index:80;max-width:min(450px,calc(100vw - 24px));padding:10px 13px;border-radius:8px;border:1px solid #b98235;background:#362819;color:#ffe0a0;box-shadow:0 5px 20px #0007;font:600 12px/1.5 system-ui;pointer-events:none;';
+  node.hidden=true;
+  document.body.appendChild(node);
+  return node;
+ }
+ return {
+  ok(){missed=0;lastSuccess=Date.now();if(node)node.hidden=true;},
+  fail(){if(++missed<2)return;const el=ensure();const time=lastSuccess?new Date(lastSuccess).toLocaleTimeString('mn-MN',{hour:'2-digit',minute:'2-digit'}):'тодорхойгүй';el.textContent='⚠ Мэдээлэл шинэчлэгдсэнгүй. Дэлгэц дээрх төлөв хуучирсан байж болно. Сүүлд амжилттай шалгасан: '+time+'. Сүлжээ сэргэсэн үед автоматаар дахин шалгана.';el.hidden=false;},
+  reset(){missed=0;if(node)node.hidden=true;}
+ };
+}
+const syncHealth=makeSyncHealthNotice();
 let revision=0,writes=0,loading=0,busy=false,last=0;
 const read=api,rpc=apiRpc,manualLoad=loadData;
 async function markWrite(action,ctx,args){revision++;writes++;try{return await action.apply(ctx,args);}finally{writes--;revision++;}}
@@ -2510,6 +2530,7 @@ function replaceScope(original,latest,matches){
 }
 function canRead(){return !!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
 async function tick(){
+ if(!activeSession?.access_token)syncHealth.reset();
  if(busy||!canRead()||Date.now()-last<1200)return;
  last=Date.now();busy=true;const who=activeSession,version=revision,where=page(),scope=requestScope(where),controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),10000);
@@ -2542,7 +2563,8 @@ async function tick(){
     if(where==='report')renderReportProductionHistory();
    }
   }
- }catch(_){/* Keep the last successful view; the next tick retries. */}
+  if(keys.length)syncHealth.ok();
+ }catch(_){syncHealth.fail();/* Keep the last successful view; the next tick retries. */}
  finally{clearTimeout(timeout);busy=false;}
 }
 setInterval(tick,interval);
