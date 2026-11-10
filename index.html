@@ -163,6 +163,54 @@ body #eq .current .status-chip{background:transparent!important;color:var(--ui-t
 #eq .current:has(.status-cat7){border-left-color:#966344;background:color-mix(in srgb,#966344 12%,#252a32)}</style><style id="menuD2">
 #extraMenuD2{position:relative;flex:0 0 auto}#extraMenuD2>summary{list-style:none;cursor:pointer;font-weight:600;background:var(--ui-raised);border:1px solid #48515c;border-radius:6px;padding:7px 11px;min-height:32px;user-select:none}#extraMenuD2>summary::-webkit-details-marker{display:none}#extraMenuD2>summary:hover{background:#39414b}#extraMenuD2.selected>summary,#extraMenuD2[open]>summary{background:var(--ui-accent);color:#171b20;border-color:var(--ui-accent)}#extraPanelD2{position:absolute;top:calc(100% + 7px);left:0;width:250px;max-width:calc(100vw - 24px);padding:6px;display:grid;gap:4px;background:var(--ui-panel);border:1px solid #596472;border-radius:8px;box-shadow:0 12px 32px #0008;z-index:12}#extraPanelD2 button{text-align:left;width:100%;white-space:normal}#extraPanelD2 button[style*="display: none"]{display:none!important}
 </style>
+
+<style id="etts-mobile-ux-d4">
+/* D4 progressive mobile ergonomics: no changes to status colors, chart dimensions, or write flows. */
+:root{--etts-touch:44px;--etts-radius:10px}
+@media(max-width:760px){
+ html{scroll-padding-top:12px}
+ body{font-size:14px;line-height:1.5}
+ header{position:relative;top:auto;flex-wrap:wrap;padding:12px;min-height:0;gap:8px}
+ header .header-brand{flex:1 1 190px;min-width:0}
+ header h1{font-size:18px}
+ header .header-brand small{display:block;font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+ header .header-logo{width:clamp(96px,30vw,140px);max-height:42px}
+ nav{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;white-space:normal;overflow:visible;gap:8px;padding:10px 12px 12px;border-bottom:1px solid var(--ui-line)}
+ nav>button,nav>#extraMenuD2{min-width:0;margin:0}
+ nav button,nav #extraMenuD2>summary{width:100%;min-height:var(--etts-touch);font-size:14px;line-height:1.25;padding:11px 8px;white-space:normal;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+ nav #extraMenuD2>summary{cursor:pointer}
+ #extraPanelD2{position:static;left:auto;top:auto;width:100%;max-width:none;margin-top:6px;padding:6px;box-shadow:none}
+ #extraPanelD2 button{min-height:var(--etts-touch);text-align:left;justify-content:flex-start}
+ #logoutButton{margin:0}
+ main{padding:10px 12px 32px;max-width:none}
+ .card,.panel,.eq,.stat{border-radius:var(--etts-radius)}
+ .stats{gap:9px}
+ .stats .stat{padding:13px 11px}
+ .stats .stat b{font-size:23px}
+ #eq .grid{grid-template-columns:1fr;gap:12px}
+ #eq .eq{padding:14px}
+ #eq .name{font-size:16px}
+ #eq .operator-row input,#eq .operator-row select,#eq .readings-row-q7 input{font-size:15px;min-height:var(--etts-touch);padding:9px}
+ #eq .status-trigger,#eq .statuses button,#eq [data-change-block],#eq [data-clear-operator-id]{min-height:var(--etts-touch);font-size:14px}
+ .equipment-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .equipment-tabs button{min-height:var(--etts-touch);font-size:14px;padding:10px}
+ .modal-backdrop.open{align-items:flex-end}
+ .modal{width:100%;max-height:92dvh;border-radius:16px 16px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));overscroll-behavior:contain}
+ .modal-grid{grid-template-columns:1fr}
+ .modal-grid button,.modal-actions button,#closeModal{min-height:var(--etts-touch);font-size:14px}
+ #quickToolbarQ6{padding:8px 12px!important}
+ #quickToolbarQ6 button{min-height:var(--etts-touch)}
+ #meterReportControlsQ7{margin:10px 12px}
+ #meterReportControlsQ7 button,#meterReportControlsQ7 input,#meterReportControlsQ7 select{min-height:var(--etts-touch)}
+ #msg{width:calc(100vw - 24px);max-width:440px;text-align:center;bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:380px){
+ header .header-logo{width:100px}
+ nav{gap:6px;padding:8px}
+ nav button,nav #extraMenuD2>summary{font-size:13px;padding:9px 6px}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
 </head>
 <style>
 #authGate{position:fixed;inset:0;z-index:99999;background:#090909;display:flex;align-items:center;justify-content:center;padding:18px;color:#f4f4f4}
