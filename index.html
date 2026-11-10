@@ -661,12 +661,7 @@ function rosterOperatorPicker(item,current){
 document.addEventListener('input',function(event){const input=event.target;if(!input.matches('[data-operator-search]'))return;const box=input.closest('.roster-picker'),select=box.querySelector('select'),item=equipment.find(x=>String(x.id)===String(input.dataset.operatorSearch));if(!item)return;const result=rosterOperatorOptions(item,select.value,input.value);select.innerHTML=result.text;box.querySelector('small').textContent=result.count+' / '+result.total+' оператор';});
 (function(){const style=document.createElement('style');style.textContent='.operator-row .roster-picker{flex:1;min-width:0;display:grid;gap:6px}.roster-picker input,.roster-picker select{width:100%;box-sizing:border-box;min-width:0;font-size:13px}.roster-picker small{font-size:11px;color:#bda99a}.operator-row{align-items:center}';document.head.append(style);})();
 
-function render() {
-  updateToolbarQ6();
-  const working = equipment.filter(function(x){ return x.current_status === "Б Бүтээлтэй | ЭЦС"; }).length;
-
-  document.getElementById("dash").innerHTML = "";
-
+function renderEquipment(){
   document.getElementById("eq").innerHTML =
     '<div class="card"><b>Техник бүрийн оператор</b><br><small>Операторыг техник бүр дээр тусад нь хадгална. SMU/KM оруулж болно. Comment нь засвар, Idle, Down төрлийн төлөвт харагдана.</small></div>' +
     equipmentGroupTabs() +
@@ -687,7 +682,11 @@ function render() {
       '</div>';
     }).join("") +
     '</div>';
-
+}
+function render() {
+  updateToolbarQ6();
+  document.getElementById("dash").innerHTML = "";
+  renderEquipment();
   renderHour();
 }
 
@@ -844,7 +843,6 @@ function renderProduction() {
   const priorMaterial=document.getElementById('productionMaterial')?.value||'';
   const dumpOptions = '<option value="">Ачуулсан экскаватор сонгох (заавал)</option>' + excavators.map(x=>'<option value="'+esc(x.id)+'"'+(String(x.id)===String(priorDump)?' selected':'')+'>'+esc(x.name)+'</option>').join("");
   const materialOptions = '<option value="">Материал сонгох</option>' + MATERIAL_TYPES.map(x=>'<option value="'+esc(x)+'"'+(x===priorMaterial?' selected':'')+'>'+esc(x)+'</option>').join("");
-  const filtered = productionLogs.filter(x => x.production_date === day && Number(x.hour_slot) === hour);
   const locationTarget=is830(currentItem)?equipment.find(x=>String(x.id)===String(document.getElementById("productionDump")?.value)):currentItem;
   document.getElementById("production").innerHTML =
     '<div class="card"><b>Цагийн бүтээлийн бүртгэл</b><p><small>Өрмийн бүтээлийг тууш метрээр, 830 техникийн бүтээлийг рейсээр бүртгэнэ. 830 дээр материалын төрлийг сонгоно.</small></p>'+
@@ -861,8 +859,15 @@ function renderProduction() {
     historicalProductionFields(day,hour,locationTarget)+
     '<label style="display:block;margin-top:8px">Тайлбар<input id="productionComment" placeholder="Нэмэлт тайлбар (заавал биш)"></label>'+
     '<button class="primary" id="saveProduction" style="margin-top:10px">Бүтээл хадгалах</button></div>'+
-    '<div class="card"><b>'+esc(day)+' · '+String(hour).padStart(2,"0")+':00 цагийн бүртгэл</b>'+
-    (filtered.length ? filtered.map(x=>{const eq=equipment.find(e=>String(e.id)===String(x.equipment_id)); const dump=equipment.find(e=>String(e.id)===String(x.dump_equipment_id)); return '<div class="log"><b>'+esc(eq?eq.name:x.equipment_id)+'</b><span>'+esc(x.amount)+' '+esc(x.measure_type)+'</span><span>'+esc(x.operator_name||"-")+'</span><span>'+(x.material_type?'Материал: '+esc(x.material_type)+' · ':'')+(dump?'Ачуулсан экскаватор: '+esc(dump.name)+' · ':'')+esc(x.comment||"")+'</span></div>';}).join("") : '<p><small>Энэ цагт бүтээлийн бүртгэл алга.</small></p>')+'</div>';
+    '<div class="card" id="productionHistory"></div>';
+  renderProductionHistory();
+}
+function renderProductionHistory(){
+  const host=document.getElementById("productionHistory");if(!host)return;
+  const day=document.getElementById("productionDate").value,hour=Number(document.getElementById("productionHour").value);
+  const filtered=productionLogs.filter(x=>x.production_date===day&&Number(x.hour_slot)===hour);
+  host.innerHTML='<b>'+esc(day)+' · '+String(hour).padStart(2,"0")+':00 цагийн бүртгэл</b>'+
+    (filtered.length ? filtered.map(x=>{const eq=equipment.find(e=>String(e.id)===String(x.equipment_id)); const dump=equipment.find(e=>String(e.id)===String(x.dump_equipment_id)); return '<div class="log"><b>'+esc(eq?eq.name:x.equipment_id)+'</b><span>'+esc(x.amount)+' '+esc(x.measure_type)+'</span><span>'+esc(x.operator_name||"-")+'</span><span>'+(x.material_type?'Материал: '+esc(x.material_type)+' · ':'')+(dump?'Ачуулсан экскаватор: '+esc(dump.name)+' · ':'')+esc(x.comment||"")+'</span></div>';}).join("") : '<p><small>Энэ цагт бүтээлийн бүртгэл алга.</small></p>');
 }
 async function saveProductionOnce() {
   const equipmentId = document.getElementById("productionEquipment")?.value;
@@ -913,10 +918,16 @@ async function saveProductionOnce() {
 }
 function renderReport() {
   const day = document.getElementById("reportDate")?.value || localDateValue();
-  const dailyProduction = productionLogs.filter(e=>e.production_date===day);
-  const prodRows=dailyProduction.map(x=>{const eq=equipment.find(e=>String(e.id)===String(x.equipment_id));return '<div class="log"><b>'+esc(eq?eq.name:x.equipment_id)+'</b><span>'+esc(x.amount)+' '+esc(x.measure_type)+'</span><span>'+esc(x.hour_slot)+':00</span><span>'+(x.material_type?esc(x.material_type)+' · ':'')+esc(x.operator_name||"-")+'</span></div>';}).join("");
   document.getElementById("report").innerHTML='<div class="card"><b>Өдөр / ээлжийн тайлан</b><label style="display:block;margin-top:8px">Огноо<input id="reportDate" type="date" value="'+esc(day)+'"></label><button class="primary" id="exportDailyReport" style="margin-top:8px">Өдрийн тайлан Excel татах</button></div>'+
-  '<div class="card"><b>Өдрийн бүтээл</b>'+(prodRows||'<p><small>Бүтээлийн бүртгэл алга.</small></p>')+'</div>';
+  '<div class="card" id="reportProductionHistory"></div>';
+  renderReportProductionHistory();
+}
+function renderReportProductionHistory(){
+  const host=document.getElementById("reportProductionHistory");if(!host)return;
+  const day=document.getElementById("reportDate").value;
+  const dailyProduction=productionLogs.filter(x=>x.production_date===day);
+  const prodRows=dailyProduction.map(x=>{const eq=equipment.find(e=>String(e.id)===String(x.equipment_id));return '<div class="log"><b>'+esc(eq?eq.name:x.equipment_id)+'</b><span>'+esc(x.amount)+' '+esc(x.measure_type)+'</span><span>'+esc(x.hour_slot)+':00</span><span>'+(x.material_type?esc(x.material_type)+' · ':'')+esc(x.operator_name||"-")+'</span></div>';}).join("");
+  host.innerHTML='<b>Өдрийн бүтээл</b>'+(prodRows||'<p><small>Бүтээлийн бүртгэл алга.</small></p>');
 }
 // Excel export only: sort copies, never mutate the original data arrays.
 function exportEventsOldestFirst(items) {
@@ -1329,9 +1340,10 @@ function mount(){if(!busy)syncCurrent();let host=document.getElementById('excava
  host.querySelector('#exLive').onclick=loadLive;
  document.dispatchEvent(new CustomEvent('data-dashboard-selection'));queueAuto();
 }
-async function loadLive(){
- if(busy)return;syncCurrent();const requestVersion=sessionVersion,day=selected,eqs=typeof equipment!=='undefined'?[...equipment]:[];
- busy=true;lastAttempt=scopeKey();message='DATA бүтээл татаж байна…';mount();
+async function loadLive(silent=false){
+ if(busy)return;
+ silent=silent===true;syncCurrent();const priorLive=live,requestVersion=sessionVersion,day=selected,eqs=typeof equipment!=='undefined'?[...equipment]:[];
+ busy=true;lastAttempt=scopeKey();if(!silent){message='DATA бүтээл татаж байна…';mount();}
  try{
   if(!signedIn()||typeof api!=='function')throw Error('DATA сайт дээр нэвтэрч ашиглана уу.');
   const next=new Date(Date.parse(day+'T00:00Z')+86400000).toISOString().slice(0,10),rows=[];
@@ -1342,13 +1354,16 @@ async function loadLive(){
    if(!Array.isArray(part))throw Error('DATA хариу буруу');rows.push(...part);if(part.length<500)break;
   }
   if(requestVersion!==sessionVersion||selected!==day)return;
-  live=C.fromLive(rows,eqs,day,source?.factor||84,source?.plans||{});live.label='Supabase · '+new Date().toLocaleString('mn-MN',{timeZone:'Asia/Ulaanbaatar'});mode='DATA';message='Бүтээл татлаа. Excel-ийн дүнтэй нийлүүлж давхар тоолоогүй.';
- }catch(e){if(requestVersion===sessionVersion){live=null;message='DATA бүтээл татсангүй: '+e.message;}}
- finally{if(requestVersion===sessionVersion){busy=false;mount();}}
+  const nextLive=C.fromLive(rows,eqs,day,source?.factor||84,source?.plans||{});
+ if(silent&&(mode!=='DATA'||selected!==day))return;
+ const signature=JSON.stringify(nextLive);
+ if(silent&&live?.syncSignature===signature)return;
+ nextLive.syncSignature=signature;live=nextLive;live.label='Supabase · '+new Date().toLocaleString('mn-MN',{timeZone:'Asia/Ulaanbaatar'});mode='DATA';message='Бүтээл татлаа. Excel-ийн дүнтэй нийлүүлж давхар тоолоогүй.';
+ }catch(e){if(requestVersion===sessionVersion&&!silent){live=null;message='DATA бүтээл татсангүй: '+e.message;}}
+ finally{if(requestVersion===sessionVersion){busy=false;if(!silent||live!==priorLive)mount();}}
 }
-function tick(){if(busy||!visible())return;const changed=syncCurrent();if(changed)mount();if(followShift&&mode==='DATA'&&signedIn())return loadLive();}
-setInterval(tick,60000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
+function tick(){if(busy||!visible())return;const changed=syncCurrent();if(changed)mount();if(mode==='DATA'&&signedIn()&&!document.activeElement?.matches?.('#exDate,#exShift,#exSource,#exFile'))return loadLive(true);}
+document.addEventListener('data-sync-poll',tick);
 document.addEventListener('click',e=>{if(e.target.closest('nav button[data-page="dash"]')){syncCurrent();mount();}});
 if(typeof applySession==='function'){const originalSession=applySession;applySession=async function(session){const changed=(typeof activeSession!=='undefined'?activeSession?.user?.id:null)!==session?.user?.id;if(changed){sessionVersion++;live=null;lastAttempt='';busy=false;message='';}const result=await originalSession.apply(this,arguments);mount();return result;};}
 const style=document.createElement('style');style.textContent=`#excavatorDashboard{margin:16px 0 24px;color:#eee}#excavatorDashboard h2,#excavatorDashboard h3{color:#ff8b45}.ex-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.ex-controls label{display:grid;gap:6px;font-size:13px}.ex-controls input,.ex-controls select{padding:9px;max-width:240px}.ex-meta{color:#b6aaa2;font-size:12px;line-height:1.6}.ex-notice{border-left:3px solid #ff8b45;padding:8px 12px;background:#241c16;color:#ffd1b1;font-size:13px}.ex-equipment{border:1px solid #414141;border-radius:12px;padding:18px;margin:16px 0;background:#141414}.ex-equipment h3{font-size:22px;margin:0 0 16px}.ex-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:13px;color:#c5b6ab}.ex-metrics strong{display:block;color:#ffad63;font-size:28px;margin-top:6px}.ex-metrics strong small{font-size:13px}.ex-chart{display:flex;gap:8px;overflow-x:auto;margin:28px 0 16px;padding-bottom:8px}.ex-col{flex:1;min-width:45px;text-align:center;font-size:11px;color:#ddd}.ex-col>span{display:block;min-height:18px}.ex-bararea{height:130px;display:flex;align-items:end;justify-content:center;border-bottom:1px solid #555}.ex-bararea i{display:block;width:70%;background:linear-gradient(#ffab46,#dc6226);border-radius:3px 3px 0 0}.ex-col small{display:block;margin-top:8px;color:#c8b09c}.ex-equipment summary{cursor:pointer;color:#ffb578}.ex-equipment table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}.ex-equipment td,.ex-equipment th{text-align:left;border-bottom:1px solid #333;padding:7px}.ex-equipment td:last-child,.ex-equipment th:last-child{text-align:right}@media(max-width:640px){.ex-metrics{grid-template-columns:1fr 1fr}.ex-metrics strong{font-size:25px}.ex-controls input{max-width:190px}}`;document.head.append(style);
@@ -1390,14 +1405,15 @@ function render(){const node=host(),sel=selection();if(!node||!sel)return;const 
  node.innerHTML='<div class="tl-heading"><div><h2>7 БелАЗын төлвийн timeline</h2><p>'+escape(sel.day)+' · '+escape(sel.shift)+' · '+clock(lo)+'–'+clock(hi)+' (UTC+8)</p></div><button type="button" id="tlRefresh" '+(busyKey?'disabled':'')+'>Төлөв шинэчлэх</button></div><p class="tl-note">Төлөвийг DATA-аас авна. Экскаваторт хуваарилсан түүхийг таамгаар тогтоохгүй, долоон машиныг хамтад нь харуулна.</p><div class="tl-legend">'+legend.map(([k,label])=>'<span><i class="tl-'+k+'" style="background:'+colors[k]+'"></i>'+label+'</span>').join('')+'</div>'+(notice?'<p role="status" class="ex-notice">'+escape(notice)+'</p>':'')+(data?'<p class="tl-note">Татсан: '+escape(full(data.loadedAt))+'. Төлөв дээр дарж цаг, операторыг харна.</p><div class="tl-scroll"><div class="tl-canvas"><div class="tl-row tl-axis"><span>Техник</span><div>'+Array.from({length:n+1},(_,i)=>'<span style="left:'+100*i/n+'%">'+clock(lo+i*3600000)+'</span>').join('')+'</div></div>'+matches.map(m=>{let t;if(m.equipment)t=C.timeline(data.rows,m.equipment.id,sel.day,sel.shift,data.asOf);return '<div class="tl-row"><div class="tl-name" title="'+escape(m.equipment?.name||'')+'">830-'+m.number+'</div><div class="tl-lane">'+(m.warning?'<span class="tl-missing">'+escape(m.warning)+'</span>':t.segments.map(s=>{const ix=segments.push(s)-1;return '<button type="button" class="tl-segment tl-'+s.type+'" data-segment="'+ix+'" style="left:'+100*(s.start-lo)/span+'%;width:'+100*(s.end-s.start)/span+'%;background:'+colors[s.type]+'" title="'+escape(s.status+' · '+full(s.start)+'–'+full(s.end)+' · '+s.minutes.toFixed(1)+' мин')+'" aria-label="'+escape('830-'+m.number+' '+s.status+' '+clock(s.start)+'–'+clock(s.end))+'">'+(s.minutes/span*60000>0.095?escape(s.type==='gap'?'Бүртгэл алга':s.status.split('|')[0]):'')+'</button>';}).join(''))+'</div></div>'+(t?.warnings.length?'<p class="tl-note">830-'+m.number+': '+escape(t.warnings.join(' · '))+'</p>':'');}).join('')+'</div></div><div class="tl-detail" id="tlDetail" aria-live="polite">'+(details?detailHTML(details):'Өнгөт төлөв дээр дарж дэлгэрэнгүйг харна.')+'</div>':'<p class="tl-note">'+(busyKey?'Бүртгэл татаж байна…':'DATA сайтад нэвтэрсний дараа төлвүүдийг татна.')+'</p>');
  node.querySelector('#tlRefresh').onclick=()=>load(true);for(const button of node.querySelectorAll('[data-segment]'))button.onclick=()=>{details=segments[Number(button.dataset.segment)];node.querySelector('#tlDetail').innerHTML=detailHTML(details);};
 }
-async function load(force=false){const sel=selection();if(!sel)return;const matches=C.trucks(eqs()),key=keyFor(sel.day,matches);lastSelection=sel;if(!matches.some(x=>x.equipment)||typeof api!=='function'){notice='';render();return;}if(!force&&cache.has(key)){notice='';render();return;}if(busyKey===key)return;const token=++request;busyKey=key;notice='';details=null;render();
- try{const ids=matches.filter(x=>x.equipment).map(x=>String(x.equipment.id));if(ids.some(x=>!/^[-a-zA-Z0-9_]+$/.test(x)))throw Error('Техникийн ID буруу');const [lo,hi]=C.bounds(sel.day,'хоног'),path='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&equipment_id=in.'+encodeURIComponent('('+ids.join(',')+')')+'&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or='+encodeURIComponent('(end_time.is.null,end_time.gt.'+new Date(lo).toISOString()+')')+'&order=start_time.asc,id.asc';const rows=[];for(let offset=0;;offset+=500){const part=await api(path+'&limit=500&offset='+offset);if(!Array.isArray(part))throw Error('Төлвийн хариу буруу');rows.push(...part);if(part.length<500)break;}if(token!==request)return;const now=Date.now();cache.set(key,{rows,loadedAt:now,asOf:now});while(cache.size>4)cache.delete(cache.keys().next().value);notice='';}
- catch(e){if(token===request)notice='Төлөв татсангүй: '+e.message;}
- finally{if(token===request){busyKey=null;const current=selection();if(current&&keyFor(current.day,C.trucks(eqs()))===key)render();else load();}}
+async function load(force=false,silent=false){const sel=selection();if(!sel)return;const matches=C.trucks(eqs()),key=keyFor(sel.day,matches);lastSelection=sel;if(!matches.some(x=>x.equipment)||typeof api!=='function'){notice='';render();return;}if(!force&&cache.has(key)){notice='';render();return;}if(busyKey===key)return;const token=++request;busyKey=key;let changed=false;if(!silent){notice='';details=null;render();}
+ try{const ids=matches.filter(x=>x.equipment).map(x=>String(x.equipment.id));if(ids.some(x=>!/^[-a-zA-Z0-9_]+$/.test(x)))throw Error('Техникийн ID буруу');const [lo,hi]=C.bounds(sel.day,'хоног'),path='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&equipment_id=in.'+encodeURIComponent('('+ids.join(',')+')')+'&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or='+encodeURIComponent('(end_time.is.null,end_time.gt.'+new Date(lo).toISOString()+')')+'&order=start_time.asc,id.asc';const rows=[];for(let offset=0;;offset+=500){const part=await api(path+'&limit=500&offset='+offset);if(!Array.isArray(part))throw Error('Төлвийн хариу буруу');rows.push(...part);if(part.length<500)break;}if(token!==request)return;if(silent&&JSON.stringify(cache.get(key)?.rows)===JSON.stringify(rows))return;changed=true;if(silent)details=null;const now=Date.now();cache.set(key,{rows,loadedAt:now,asOf:now});while(cache.size>4)cache.delete(cache.keys().next().value);notice='';}
+ catch(e){if(token===request&&!silent)notice='Төлөв татсангүй: '+e.message;}
+ finally{if(token===request){busyKey=null;const current=selection();if(current&&keyFor(current.day,C.trucks(eqs()))===key){if(!silent||changed){const sc=document.querySelector("#truckTimeline .tl-scroll")?.scrollLeft;render();const view=document.querySelector("#truckTimeline .tl-scroll");if(view&&sc!=null)view.scrollLeft=sc;}}else load();}}
 }
 const style=document.createElement('style');style.textContent=`#truckTimeline{margin:30px 0;border-top:1px solid #454545;padding-top:22px}.tl-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.tl-heading h2{font-size:21px;margin:0}.tl-heading p,.tl-note{color:#bfb5ae;font-size:12px;line-height:1.6}.tl-legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:18px 0;font-size:12px}.tl-legend span{display:flex;align-items:center;gap:6px}.tl-legend i{width:12px;height:12px;display:inline-block;border:1px solid #777}.tl-scroll{overflow-x:auto;border:1px solid #444;border-radius:9px;background:#121212}.tl-canvas{min-width:850px;padding:14px 22px 18px 12px}.tl-row{display:grid;grid-template-columns:110px minmax(0,1fr);align-items:center;min-height:48px;gap:10px}.tl-axis{min-height:34px;font-size:11px;color:#bdb4ad}.tl-axis>div{position:relative;height:24px}.tl-axis>div>span{position:absolute;transform:translateX(-50%);white-space:nowrap}.tl-name{font-weight:700;font-size:14px;color:#ffb66d}.tl-lane{position:relative;height:32px;background:#262626;border-radius:4px}.tl-segment{position:absolute;top:0;bottom:0;box-sizing:border-box!important;border:0!important;border-right:1px solid #121212!important;border-radius:0!important;color:#fff!important;padding:0 3px!important;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0!important}.tl-segment:hover,.tl-segment:focus{outline:2px solid white;z-index:1}.tl-future{background:repeating-linear-gradient(45deg,#202020,#202020 5px,#303030 5px,#303030 9px)!important}.tl-overlap{background:repeating-linear-gradient(45deg,#a92c64,#a92c64 5px,#e65f9d 5px,#e65f9d 9px)!important}.tl-missing{position:absolute;padding:7px 10px;color:#bbb;font-size:12px}.tl-detail{margin-top:14px;background:#171717;padding:14px;color:#ded4cd;border-radius:7px;font-size:13px;line-height:1.6}.tl-detail strong{color:#ffb473}.tl-detail p{margin:7px 0}@media(max-width:600px){.tl-heading{align-items:start;flex-direction:column}.tl-heading h2{font-size:18px}}`;document.head.append(style);
 // Only dashboard selection/render notifications. No database writes.
 document.addEventListener('data-dashboard-selection',()=>{const sel=selection();if(!sel)return;if(lastSelection?.day!==sel.day||lastSelection?.shift!==sel.shift)details=null;render();load();});render();load();
+document.addEventListener('data-sync-poll',()=>{if(document.getElementById('dash')?.style.display!=='none')void load(true,true);});
 })();
 </script>
 <!-- TRUCK TIMELINE END -->
@@ -1589,10 +1605,10 @@ function render(){const node=host(),sel=selection();if(!node||!sel)return;const 
  node.innerHTML='<div class="tl-heading"><div><h2>Нийт техникийн төлвийн timeline</h2><p>'+escape(sel.day)+' · '+escape(sel.shift)+' · '+clock(lo)+'–'+clock(hi)+' (UTC+8)</p></div><button type="button" id="allTlRefresh" '+(busyKey?'disabled':'')+'>Төлөв шинэчлэх</button></div><p class="tl-note">DATA-д бүртгэлтэй бүх техникийг харуулна. Өнгөт төлөв дээр дарж дэлгэрэнгүйг нээнэ.</p><div class="tl-legend">'+legend.map(([k,label])=>'<span><i class="tl-'+k+'" style="background:'+colors[k]+'"></i>'+label+'</span>').join('')+'</div>'+(notice?'<p role="status" class="ex-notice">'+escape(notice)+'</p>':'')+(data?'<p class="tl-note">Татсан: '+escape(full(data.loadedAt))+'. Төлөв дээр дарж цаг, операторыг харна.</p><div class="tl-scroll"><div class="tl-canvas"><div class="tl-row tl-axis"><span>Техник</span><div>'+Array.from({length:n+1},(_,i)=>'<span style="left:'+100*i/n+'%">'+clock(lo+i*3600000)+'</span>').join('')+'</div></div>'+matches.map(m=>{let t;if(m.equipment)t=C.timeline(data.rows,m.equipment.id,sel.day,sel.shift,data.asOf);return '<div class="tl-row"><div class="tl-name" title="'+escape(m.equipment?.name||'')+'">'+m.number+'</div><div class="tl-lane">'+(m.warning?'<span class="tl-missing">'+escape(m.warning)+'</span>':t.segments.map(s=>{const ix=segments.push(s)-1;return '<button type="button" class="tl-segment tl-'+s.type+'" data-all-segment="'+ix+'" style="left:'+100*(s.start-lo)/span+'%;width:'+100*(s.end-s.start)/span+'%;background:'+colors[s.type]+'" title="'+escape(s.status+' · '+full(s.start)+'–'+full(s.end)+' · '+s.minutes.toFixed(1)+' мин')+'" aria-label="'+escape(''+m.number+' '+s.status+' '+clock(s.start)+'–'+clock(s.end))+'">'+(s.minutes/span*60000>0.095?escape(s.type==='gap'?'Бүртгэл алга':s.status.split('|')[0]):'')+'</button>';}).join(''))+'</div></div>'+(t?.warnings.length?'<p class="tl-note">'+m.number+': '+escape(t.warnings.join(' · '))+'</p>':'');}).join('')+'</div></div><div class="tl-detail" id="allTlDetail" aria-live="polite">'+(details?detailHTML(details):'Өнгөт төлөв дээр дарж дэлгэрэнгүйг харна.')+'</div>':'<p class="tl-note">'+(busyKey?'Бүртгэл татаж байна…':'DATA сайтад нэвтэрсний дараа төлвүүдийг татна.')+'</p>');
  node.querySelector('#allTlRefresh').onclick=()=>load(true);for(const button of node.querySelectorAll('[data-all-segment]'))button.onclick=()=>{details=segments[Number(button.dataset.allSegment)];node.querySelector('#allTlDetail').innerHTML=detailHTML(details);};
 }
-async function load(force=false){if(document.getElementById('allTimeline').style.display==='none')return;const sel=selection();if(!sel)return;const matches=allEquipment(),key=keyFor(sel.day,matches);lastSelection=sel;if(!matches.some(x=>x.equipment)||typeof api!=='function'){notice='';render();return;}if(!force&&cache.has(key)){notice='';render();return;}if(busyKey===key)return;const token=++request;busyKey=key;notice='';details=null;render();
- try{const ids=matches.filter(x=>x.equipment).map(x=>String(x.equipment.id));if(ids.some(x=>!/^[-a-zA-Z0-9_]+$/.test(x)))throw Error('Техникийн ID буруу');const [lo,hi]=C.bounds(sel.day,'хоног'),path='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&equipment_id=in.'+encodeURIComponent('('+ids.join(',')+')')+'&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or='+encodeURIComponent('(end_time.is.null,end_time.gt.'+new Date(lo).toISOString()+')')+'&order=start_time.asc,id.asc';const rows=[];for(let offset=0;;offset+=500){const part=await api(path+'&limit=500&offset='+offset);if(!Array.isArray(part))throw Error('Төлвийн хариу буруу');rows.push(...part);if(part.length<500)break;}if(token!==request)return;const now=Date.now();cache.set(key,{rows,loadedAt:now,asOf:now});while(cache.size>4)cache.delete(cache.keys().next().value);notice='';}
- catch(e){if(token===request)notice='Төлөв татсангүй: '+e.message;}
- finally{if(token===request){busyKey=null;const current=selection();if(current&&keyFor(current.day,allEquipment())===key)render();else load();}}
+async function load(force=false,silent=false){if(document.getElementById('allTimeline').style.display==='none')return;const sel=selection();if(!sel)return;const matches=allEquipment(),key=keyFor(sel.day,matches);lastSelection=sel;if(!matches.some(x=>x.equipment)||typeof api!=='function'){notice='';render();return;}if(!force&&cache.has(key)){notice='';render();return;}if(busyKey===key)return;const token=++request;busyKey=key;let changed=false;if(!silent){notice='';details=null;render();}
+ try{const ids=matches.filter(x=>x.equipment).map(x=>String(x.equipment.id));if(ids.some(x=>!/^[-a-zA-Z0-9_]+$/.test(x)))throw Error('Техникийн ID буруу');const [lo,hi]=C.bounds(sel.day,'хоног'),path='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&equipment_id=in.'+encodeURIComponent('('+ids.join(',')+')')+'&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or='+encodeURIComponent('(end_time.is.null,end_time.gt.'+new Date(lo).toISOString()+')')+'&order=start_time.asc,id.asc';const rows=[];for(let offset=0;;offset+=500){const part=await api(path+'&limit=500&offset='+offset);if(!Array.isArray(part))throw Error('Төлвийн хариу буруу');rows.push(...part);if(part.length<500)break;}if(token!==request)return;if(silent&&JSON.stringify(cache.get(key)?.rows)===JSON.stringify(rows))return;changed=true;if(silent)details=null;const now=Date.now();cache.set(key,{rows,loadedAt:now,asOf:now});while(cache.size>4)cache.delete(cache.keys().next().value);notice='';}
+ catch(e){if(token===request&&!silent)notice='Төлөв татсангүй: '+e.message;}
+ finally{if(token===request){busyKey=null;const current=selection();if(current&&keyFor(current.day,allEquipment())===key){if(!silent||changed){const sc=document.querySelector("#allTimeline .tl-scroll")?.scrollLeft;render();const view=document.querySelector("#allTimeline .tl-scroll");if(view&&sc!=null)view.scrollLeft=sc;}}else load();}}
 }
 const style=document.createElement('style');style.textContent=`#allTimelineBody{margin:30px 0;border-top:1px solid #454545;padding-top:22px}#allTimeline .tl-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}#allTimeline .tl-heading h2{font-size:21px;margin:0}#allTimeline .tl-heading p,#allTimeline .tl-note{color:#bfb5ae;font-size:12px;line-height:1.6}#allTimeline .tl-legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:18px 0;font-size:12px}#allTimeline .tl-legend span{display:flex;align-items:center;gap:6px}#allTimeline .tl-legend i{width:12px;height:12px;display:inline-block;border:1px solid #777}#allTimeline .tl-scroll{overflow-x:auto;border:1px solid #444;border-radius:9px;background:#121212}#allTimeline .tl-canvas{min-width:850px;padding:14px 22px 18px 12px}#allTimeline .tl-row{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;min-height:48px;gap:10px}#allTimeline .tl-axis{min-height:34px;font-size:11px;color:#bdb4ad}#allTimeline .tl-axis>div{position:relative;height:24px}#allTimeline .tl-axis>div>span{position:absolute;transform:translateX(-50%);white-space:nowrap}#allTimeline .tl-name{font-weight:700;font-size:14px;color:#ffb66d}#allTimeline .tl-lane{position:relative;height:32px;background:#262626;border-radius:4px}#allTimeline .tl-segment{position:absolute;top:0;bottom:0;box-sizing:border-box!important;border:0!important;border-right:1px solid #121212!important;border-radius:0!important;color:#fff!important;padding:0 3px!important;cursor:pointer;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0!important}#allTimeline .tl-segment:hover,#allTimeline .tl-segment:focus{outline:2px solid white;z-index:1}#allTimeline .tl-future{background:repeating-linear-gradient(45deg,#202020,#202020 5px,#303030 5px,#303030 9px)!important}#allTimeline .tl-overlap{background:repeating-linear-gradient(45deg,#a92c64,#a92c64 5px,#e65f9d 5px,#e65f9d 9px)!important}#allTimeline .tl-missing{position:absolute;padding:7px 10px;color:#bbb;font-size:12px}#allTimeline .tl-detail{margin-top:14px;background:#171717;padding:14px;color:#ded4cd;border-radius:7px;font-size:13px;line-height:1.6}#allTimeline .tl-detail strong{color:#ffb473}#allTimeline .tl-detail p{margin:7px 0}@media(max-width:600px){#allTimeline .tl-heading{align-items:start;flex-direction:column}#allTimeline .tl-heading h2{font-size:18px}}`;document.head.append(style);
 function init(){const panel=document.getElementById('allTimeline');if(!panel)return;const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ulaanbaatar',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -1602,6 +1618,7 @@ function init(){const panel=document.getElementById('allTimeline');if(!panel)ret
  // Invalidate cached data on a session change; leave existing panels intact.
  if(typeof applySession==='function'){const base=applySession;applySession=async function(){cache.clear();details=null;request++;busyKey=null;const result=await base.apply(this,arguments);render();load();return result;};}
  init();
+document.addEventListener('data-sync-poll',()=>{if(document.getElementById('allTimeline')?.style.display!=='none')void load(true,true);});
 })();
 </script>
 <!-- ALL EQUIPMENT TIMELINE END -->
@@ -2340,6 +2357,111 @@ function init(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
 
+</script>
+<script>
+(function(){
+'use strict';
+const interval=15000,paths={
+ equipment:'equipment?select=*&order=name',
+ operators:'equipment_operator_names?select=equipment_id,operator_name&order=equipment_id',
+ events:'equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,smu,km,comment&order=start_time.desc,id.desc',
+ production:'production_logs?select=*&order=created_at.desc,id.desc'
+};
+let revision=0,writes=0,loading=0,busy=false,last=0;
+const read=api,rpc=apiRpc,manualLoad=loadData;
+async function markWrite(action,ctx,args){revision++;writes++;try{return await action.apply(ctx,args);}finally{writes--;revision++;}}
+api=function(path,options){return /^(GET|HEAD)$/i.test(options?.method||'GET')?read.apply(this,arguments):markWrite(read,this,arguments);};
+apiRpc=function(name,payload){return payload?.p_action==='latest'?rpc.apply(this,arguments):markWrite(rpc,this,arguments);};
+loadData=async function(){revision++;loading++;try{return await manualLoad.apply(this,arguments);}finally{loading--;revision++;}};
+const page=()=>document.querySelector('nav button.active[data-page]')?.dataset.page||'dash';
+const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+function equipmentBusy(){
+ const root=document.getElementById('eq');
+ if(!root)return false;
+ return (root.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))||
+  [...root.querySelectorAll('input:not([data-operator-id]):not([data-operator-search]),textarea')].some(x=>x.value!==x.defaultValue);
+}
+function updateEquipmentView(){
+ const search=new Map([...document.querySelectorAll('#eq [data-operator-search]')].map(x=>[x.dataset.operatorSearch,x.value]));
+ renderEquipment();
+ for(const input of document.querySelectorAll('#eq [data-operator-search]')){
+  const value=search.get(input.dataset.operatorSearch);
+  if(value){input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));}
+ }
+}
+function requestScope(where){
+ const value=id=>document.getElementById(id)?.value;
+ if(where==='eq')return {key:where};
+ if(where==='hour'||where==='report'){
+  const day=value(where==='hour'?'hourDate':'reportDate'),hour=where==='hour'?Number(value('hourSelect')):null;
+  if(!day||hour!==null&&(!Number.isInteger(hour)||hour<0||hour>23))return null;
+  const lo=new Date(day+'T00:00:00'),hi=new Date(lo);
+  if(hour===null)hi.setDate(hi.getDate()+1);else{lo.setHours(hour);hi.setHours(hour+1);}
+  if(!Number.isFinite(lo.getTime())||!Number.isFinite(hi.getTime()))return null;
+  return {key:[where,day,hour].join('|'),day,hour,lo,hi};
+ }
+ if(where==='production'){
+  const day=value('productionDate'),hour=Number(value('productionHour'));
+  if(day&&Number.isInteger(hour)&&hour>=0&&hour<=23)return {key:[where,day,hour].join('|'),day,hour};
+ }
+ return null;
+}
+async function scopedRead(path,signal){
+ const rows=[];
+ for(let offset=0;;offset+=500){
+  const part=await api(path+'&limit=500&offset='+offset,{cache:'no-store',signal});
+  if(!Array.isArray(part))throw Error('Invalid background response');
+  rows.push(...part);if(part.length<500)return rows;
+ }
+}
+function replaceScope(original,latest,matches){
+ const prior=original.filter(matches);
+ if(equal(prior,latest))return original;
+ return [...original.filter(row=>!matches(row)),...latest];
+}
+function canRead(){return !!activeSession?.access_token&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
+async function tick(){
+ if(busy||!canRead()||Date.now()-last<1200)return;
+ last=Date.now();busy=true;const who=activeSession,version=revision,where=page(),scope=requestScope(where),controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),10000);
+ try{
+  document.dispatchEvent(new CustomEvent('data-sync-poll'));
+  if(!scope||(where==='eq'&&equipmentBusy()))return;
+  const options={cache:'no-store',signal:controller.signal};
+  const jobs={};
+  if(where==='eq'){jobs.equipment=api(paths.equipment,options);jobs.operators=api(paths.operators,options);}
+  if(scope.lo)jobs.events=scopedRead(paths.events+'&start_time=gte.'+encodeURIComponent(scope.lo.toISOString())+'&start_time=lt.'+encodeURIComponent(scope.hi.toISOString()),controller.signal);
+  if(where==='report'||where==='production')jobs.production=scopedRead(paths.production+'&production_date=eq.'+encodeURIComponent(scope.day)+(where==='production'?'&hour_slot=eq.'+scope.hour:''),controller.signal);
+  const keys=Object.keys(jobs),values=await Promise.all(Object.values(jobs));
+  if(!canRead()||who!==activeSession||version!==revision||where!==page()||scope.key!==requestScope(where)?.key||values.some(x=>!Array.isArray(x)))return;
+  const data=Object.fromEntries(keys.map((key,i)=>[key,values[i]]));
+  if(where==='eq'&&!equipmentBusy()){
+   const names=Object.fromEntries(data.operators.map(row=>[String(row.equipment_id),String(row.operator_name||'')]));
+   if(!equal(equipment,data.equipment)||!equal(Object.entries(sharedOperators).sort(),Object.entries(names).sort())||!operatorSyncReady){
+    equipment=data.equipment;sharedOperators=names;operatorSyncReady=true;updateEquipmentView();
+   }
+  }
+  if(data.events&&(where!=='hour'||!document.activeElement?.matches?.('#hourDate,#hourSelect'))){
+   const next=replaceScope(events,data.events,row=>{const stamp=Date.parse(row.start_time);return stamp>=scope.lo&&stamp<scope.hi;});
+   if(next!==events){events=next;if(where==='hour')renderHour();}
+  }
+  if(data.production){
+   const next=replaceScope(productionLogs,data.production,row=>row.production_date===scope.day&&(where==='report'||Number(row.hour_slot)===scope.hour));
+   if(next!==productionLogs){
+    productionLogs=next;
+    if(where==='production')renderProductionHistory();
+    if(where==='report')renderReportProductionHistory();
+   }
+  }
+ }catch(_){/* Keep the last successful view; the next tick retries. */}
+ finally{clearTimeout(timeout);busy=false;}
+}
+setInterval(tick,interval);
+window.addEventListener('focus',tick);
+window.addEventListener('online',tick);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void tick();});
+document.addEventListener('click',e=>{if(e.target.closest?.('nav button[data-page]'))setTimeout(tick,0);});
+})();
 </script>
 </body>
 </html>
