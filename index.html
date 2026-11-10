@@ -1414,6 +1414,15 @@ function operatorKey(v){return String(v??'').normalize('NFKC').toLocaleLowerCase
 function findOperator(value,roster){const key=operatorKey(value);return roster.filter(r=>[r.short,r.name,r.surname+' '+r.name,r.code].filter(Boolean).some(x=>operatorKey(x)===key));}
 const EARLY_EXPORT_WINDOW_MS=30*60000;
 const CHANGEOVER_KEYS=['ээлж солилцох','ээлж солих'];
+function wholeShiftMinutes(workMs,stopMs){
+ // Round status totals together so the ERP row stays balanced.
+ const buckets=[{column:null,ms:workMs},...Object.entries(stopMs).map(([column,ms])=>({column,ms}))];
+ for(const bucket of buckets)bucket.whole=Math.floor(bucket.ms/60000);
+ const remaining=720-buckets.reduce((sum,bucket)=>sum+bucket.whole,0);
+ const ranked=buckets.slice().sort((a,b)=>(b.ms%60000)-(a.ms%60000)||b.ms-a.ms);
+ for(let i=0;i<remaining;i++)ranked[i].whole++;
+ return {work:buckets[0].whole,minutes:Object.fromEntries(buckets.slice(1).map(bucket=>[bucket.column,bucket.whole]))};
+}
 function calculate({day,shift,template,equipment,events,roster,operatorSelections={},now=Date.now()}){
  const [lo,hi]=bounds(day,shift),issues=[],result=[],excluded=[],seen=new Set(),projectedOpenStatuses=[];
  const early=now<hi,canProject=early&&now>=hi-EARLY_EXPORT_WINDOW_MS;
@@ -1439,11 +1448,11 @@ function calculate({day,shift,template,equipment,events,roster,operatorSelection
    const end=early&&!project?Math.min(recordedEnd,now):Math.min(recordedEnd,hi);
    if(end>Math.max(start,lo))rows.push({...e,a:Math.max(lo,start),b:end,recordedLimit:Math.min(recordedEnd,hi),projected:project});
   }
-  rows.sort((a,b)=>a.a-b.a||String(a.id).localeCompare(String(b.id)));let cursor=lo,overlapCursor=lo,work=0;const minutes={},operators=new Map();
+  rows.sort((a,b)=>a.a-b.a||String(a.id).localeCompare(String(b.id)));let cursor=lo,overlapCursor=lo,workMs=0;const stopMs={},operators=new Map();
   for(const e of rows){const identifier=String(e.id);if(seen.has(identifier)){issues.push(tr.name+': давхардсан бүртгэлийн ID '+identifier);continue;}seen.add(identifier);if(e.a>cursor+1)issues.push(tr.name+': '+((e.a-cursor)/60000).toFixed(2)+' минутын бүртгэлгүй завсар');if(e.a<overlapCursor-1)issues.push(tr.name+': ID '+e.id+' давхцаж байна');cursor=Math.max(cursor,e.b);overlapCursor=Math.max(overlapCursor,e.recordedLimit);
-   const duration=(e.b-e.a)/60000,k=statusKey(e.status);
+   const elapsed=e.b-e.a,duration=elapsed/60000,k=statusKey(e.status);
    const statusColumn=headerMap.get(k)??(CHANGEOVER_KEYS.includes(k)?CHANGEOVER_KEYS.map(alias=>headerMap.get(alias)).find(Boolean):undefined);
-   if(k===statusKey('Б Бүтээлтэй'))work+=duration;else if(statusColumn)minutes[statusColumn]=(minutes[statusColumn]||0)+duration;else issues.push(tr.name+': Excel баганад таарахгүй төлөв «'+e.status+'»');
+   if(k===statusKey('Б Бүтээлтэй'))workMs+=elapsed;else if(statusColumn)stopMs[statusColumn]=(stopMs[statusColumn]||0)+elapsed;else issues.push(tr.name+': Excel баганад таарахгүй төлөв «'+e.status+'»');
    if(e.projected)projectedOpenStatuses.push({name:tr.name,status:e.status,minutes:(hi-now)/60000});
    if(e.operator_name?.trim())operators.set(e.operator_name.trim(),(operators.get(e.operator_name.trim())||0)+duration);else if(k===statusKey('Б Бүтээлтэй'))issues.push(tr.name+': бүтээлтэй мөрийн оператор дутуу');
   }
@@ -1454,7 +1463,9 @@ function calculate({day,shift,template,equipment,events,roster,operatorSelection
   const selected=operatorSelections[String(eq.id)];
   operator=operatorOptions[0]||null;
 
-  const stop=Object.values(minutes).reduce((a,b)=>a+b,0);if(Math.abs(work+stop-720)>0.0001)issues.push(tr.name+': төлвүүдийн нийлбэр '+(work+stop).toFixed(4)+' минут, 720-той таарахгүй');
+  const total=(workMs+Object.values(stopMs).reduce((sum,ms)=>sum+ms,0))/60000;
+  if(Math.abs(total-720)>0.0001){issues.push(tr.name+': төлвүүдийн нийлбэр '+total.toFixed(4)+' минут, 720-той таарахгүй');continue;}
+  const {work,minutes}=wholeShiftMinutes(workMs,stopMs),stop=720-work;
   result.push({row:tr.row,name:tr.name,equipment_id:eq.id,operator,operatorOptions,minutes,work,stop});
  }
  for(const e of equipment)if(!mapped.has(String(e.id)))excluded.push(e.name);
@@ -1536,7 +1547,7 @@ function mount(){
  let node=document.getElementById('erpExport');if(!node){node=document.createElement('section');node.id='erpExport';node.className='card';parent.prepend(node);}
  const date=safe(document.getElementById('erpDay')?.value||document.getElementById('reportDate')?.value||localDateValue());
  const disabled=working||!saved?'disabled':'';
- node.innerHTML='<h3>ERP мотоцаг тайлан</h3><p><small>Загвар Excel-ээ нэг удаа сонгоно. Энэ браузерт хадгална, серверт илгээхгүй.</small></p><label>ERP загвар <input id="erpTemplate" type="file" accept=".xlsx" '+(working?'disabled':'')+'></label><p id="erpTemplateName">'+safe(saved?.name||'Загвар сонгоогүй')+'</p><label>Ээлж эхлэх огноо <input id="erpDay" type="date" value="'+date+'" '+(working?'disabled':'')+'></label><div class="erp-shift-downloads" style="display:flex;gap:12px;flex-wrap:wrap;margin:14px 0"><div style="flex:1;min-width:240px;border:1px solid #454b55;border-radius:8px;padding:14px"><strong>Өдрийн ээлж · 07:00–19:00</strong><p><small>Зөвхөн өдрийн бүртгэлийг шалгаж шинэчилнэ.</small></p><button type="button" class="primary" id="erpDownloadDay" '+disabled+'>Өдрийн Excel татах</button></div><div style="flex:1;min-width:240px;border:1px solid #454b55;border-radius:8px;padding:14px"><strong>Шөнийн ээлж · 19:00–маргаашийн 07:00</strong><p><small>Зөвхөн шөнийн бүртгэлийг шалгаж шинэчилнэ.</small></p><button type="button" class="primary" id="erpDownloadNight" '+disabled+'>Шөнийн Excel татах</button></div></div><p role="status" aria-live="polite">'+safe(message)+'</p>'+(problems.length?'<details open><summary>'+safe(chosenShift)+' ээлж — шалгах зүйлс ('+problems.length+')</summary><ul>'+problems.map(x=>'<li>'+safe(x)+'</li>').join('')+'</ul></details>':'')+operatorPickerHTML()+'<small>Ээлжийн сүүлийн 30 минутад татахад техник бүрийн сүүлчийн нээлттэй төлвийг Excel-д ээлжийн төгсгөл хүртэл тооцно. DATA бүртгэлийн цаг өөрчлөгдөхгүй. Техник бүр 720 минуттай, завсаргүй үед файл гарна. Өдөр: техник 3-р мөрөөс. Шөнө: гарчиг 94, техник 96-р мөрөөс. Нөгөө ээлжийн хэсэг загвар файлд байгаагаараа үлдэнэ; татсан файлаа дараагийн ээлжийн загвар болгон сонгож болно.</small>';
+ node.innerHTML='<h3>ERP мотоцаг тайлан</h3><p><small>Загвар Excel-ээ нэг удаа сонгоно. Энэ браузерт хадгална, серверт илгээхгүй.</small></p><label>ERP загвар <input id="erpTemplate" type="file" accept=".xlsx" '+(working?'disabled':'')+'></label><p id="erpTemplateName">'+safe(saved?.name||'Загвар сонгоогүй')+'</p><label>Ээлж эхлэх огноо <input id="erpDay" type="date" value="'+date+'" '+(working?'disabled':'')+'></label><div class="erp-shift-downloads" style="display:flex;gap:12px;flex-wrap:wrap;margin:14px 0"><div style="flex:1;min-width:240px;border:1px solid #454b55;border-radius:8px;padding:14px"><strong>Өдрийн ээлж · 07:00–19:00</strong><p><small>Зөвхөн өдрийн бүртгэлийг шалгаж шинэчилнэ.</small></p><button type="button" class="primary" id="erpDownloadDay" '+disabled+'>Өдрийн Excel татах</button></div><div style="flex:1;min-width:240px;border:1px solid #454b55;border-radius:8px;padding:14px"><strong>Шөнийн ээлж · 19:00–маргаашийн 07:00</strong><p><small>Зөвхөн шөнийн бүртгэлийг шалгаж шинэчилнэ.</small></p><button type="button" class="primary" id="erpDownloadNight" '+disabled+'>Шөнийн Excel татах</button></div></div><p role="status" aria-live="polite">'+safe(message)+'</p>'+(problems.length?'<details open><summary>'+safe(chosenShift)+' ээлж — шалгах зүйлс ('+problems.length+')</summary><ul>'+problems.map(x=>'<li>'+safe(x)+'</li>').join('')+'</ul></details>':'')+operatorPickerHTML()+'<small>Ээлжийн сүүлийн 30 минутад татахад техник бүрийн сүүлчийн нээлттэй төлвийг Excel-д ээлжийн төгсгөл хүртэл тооцно. DATA бүртгэлийн цаг өөрчлөгдөхгүй. Техник бүрийн төлвийн хугацааг бүхэл минутаар, нийлбэрийг 720 минутаар гаргана. Бүртгэлд завсар, давхардал байвал файл гаргахгүй. Өдөр: техник 3-р мөрөөс. Шөнө: гарчиг 94, техник 96-р мөрөөс. Нөгөө ээлжийн хэсэг загвар файлд байгаагаараа үлдэнэ; татсан файлаа дараагийн ээлжийн загвар болгон сонгож болно.</small>';
  node.querySelector('#erpTemplate').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>20*1024*1024)throw Error('Загвар 20MB-аас том');const bytes=await file.arrayBuffer();await templateFile(bytes,'2026-10-17');saved={name:file.name,bytes};clearOperatorSelections();try{await templateStore('put',saved);message='Загвар энэ браузерт хадгалагдлаа.';}catch{message='Загвар уншлаа. Браузерт хадгалж чадсангүй, дараа дахин сонгоно.';}problems=[];}catch(err){message='Загвар солигдоогүй: '+err.message;}mount();};
  node.querySelector('#erpDay').onchange=e=>{clearOperatorSelections();message='';problems=[];const main=document.getElementById('reportDate');if(main){main.value=e.target.value;main.dispatchEvent(new Event('change',{bubbles:true}));}};
  node.querySelector('#erpDownloadDay').onclick=()=>exportERP('өдөр');
