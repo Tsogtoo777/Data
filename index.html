@@ -288,6 +288,7 @@ const authClient = window.supabase.createClient(API_URL, API_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
 });
 let activeSession = null;
+let authEpoch=0,authRefreshFlight=null,authNeedsLogin=false;
 let equipment = [];
 let statuses = [];
 let events = [];
@@ -322,43 +323,82 @@ function resolveLoginName(value) {
   const name = String(value || '').trim();
   return name.toUpperCase() === 'ETTS' ? 'etts.viewer@data-event.invalid' : name;
 }
-async function api(path, options) {
-  const opts = options || {};
-  if (isReadOnlyViewer() && !['GET','HEAD'].includes(String(opts.method || 'GET').toUpperCase()))
-    throw new Error('ETTS: зөвхөн харах эрхтэй.');
-  const headers = Object.assign({
-    "apikey": API_KEY,
-    "Authorization": "Bearer " + API_KEY,
-    "Content-Type": "application/json"
-  }, opts.headers || {});
-  if (!activeSession?.access_token) throw new Error("Нэвтэрч орно уу.");
-  headers.Authorization = "Bearer " + activeSession.access_token;
-  const response = await fetch(API_URL + "/rest/v1/" + path, Object.assign({}, opts, {headers}));
-  const text = await response.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
-  if (!response.ok) {
-    throw new Error((data && data.message) || text || ("HTTP " + response.status));
-  }
-  return data;
+function authContext(){
+  const userId=activeSession?.user?.id;
+  if(!userId||!activeSession.access_token||authNeedsLogin)throw Error('DATA-д дахин нэвтэрнэ үү.');
+  return {epoch:authEpoch,userId};
 }
-
-async function apiRpc(name, payload) {
-  if (isReadOnlyViewer()) throw new Error('ETTS: зөвхөн харах эрхтэй.');
-  if (!activeSession?.access_token) throw new Error("Нэвтэрч орно уу.");
-  const response = await fetch(API_URL + "/rest/v1/rpc/" + name, {
-    method: "POST",
-    headers: {"apikey": API_KEY, "Authorization": "Bearer " + activeSession.access_token,
-      "Content-Type": "application/json"},
-    body: JSON.stringify(payload)
-  });
-  const raw = await response.text();
-  if (!response.ok) {
-    let err; try { err = JSON.parse(raw); } catch (_) {}
-    const error=new Error(err?.message || raw || ("HTTP " + response.status)); error.status=response.status; throw error;
-  }
-  return raw ? JSON.parse(raw) : null;
+function checkAuthContext(context){
+  if(context.epoch!==authEpoch||context.userId!==activeSession?.user?.id)throw Error('Нэвтрэлт солигдсон байна. Үйлдлээ дахин шалгана уу.');
 }
+function needsDataLogin(){
+  authNeedsLogin=true;
+  gate.hidden=false;
+  loginError.textContent='Нэвтрэх хугацаа дууссан байна. DATA-д дахин нэвтэрнэ үү.';
+}
+function refreshDataSession(context,rejectedToken){
+  checkAuthContext(context);
+  const current=activeSession;
+  const expires=Number(current.expires_at);
+  const expiring=Number.isFinite(expires)&&expires>0&&expires*1000<=Date.now()+30000;
+  if(!expiring&&(!rejectedToken||current.access_token!==rejectedToken))return Promise.resolve(current);
+  if(authRefreshFlight?.epoch===context.epoch)return authRefreshFlight.promise;
+  const flight={epoch:context.epoch};
+  flight.promise=(async()=>{
+    try{
+      const {data,error}=await authClient.auth.refreshSession();
+      checkAuthContext(context);
+      if(error){
+        if([400,401,403].includes(error.status)||error.name==='AuthSessionMissingError'){
+          needsDataLogin();
+          throw Error('Нэвтрэх хугацаа дууссан. DATA-д дахин нэвтэрнэ үү.');
+        }
+        throw Error('Нэвтрэлтийг шинэчилж чадсангүй. Сүлжээгээ шалгаад дахин оролдоно уу.');
+      }
+      if(!data?.session?.access_token||data.session.user?.id!==context.userId){
+        needsDataLogin();
+        throw Error('DATA-д дахин нэвтэрнэ үү.');
+      }
+      activeSession=data.session;
+      return activeSession;
+    }finally{if(authRefreshFlight===flight)authRefreshFlight=null;}
+  })();
+  authRefreshFlight=flight;
+  return flight.promise;
+}
+function expiredJwtResponse(response,data){
+  return response.status===401&&/\bjwt(?:\s+has)?\s+expired\b/i.test(typeof data==='string'?data:String(data?.message??''));
+}
+async function dataRest(path,options={},rpc=false){
+  const context=authContext();
+  const method=String(options.method||'GET').toUpperCase(),write=rpc||!['GET','HEAD'].includes(method);
+  let session=await refreshDataSession(context);
+  for(let attempt=0;attempt<2;attempt++){
+    checkAuthContext(context);
+    if(write&&isReadOnlyViewer(session))throw Error('ETTS: зөвхөн харах эрхтэй.');
+    const token=session.access_token;
+    const headers=Object.assign({apikey:API_KEY,'Content-Type':'application/json'},options.headers||{});
+    headers.Authorization='Bearer '+token;
+    const response=await fetch(API_URL+'/rest/v1/'+path,Object.assign({},options,{headers}));
+    const raw=await response.text();let data=null;
+    if(raw){try{data=JSON.parse(raw);}catch(error){if(rpc&&response.ok)throw error;data=raw;}}
+    checkAuthContext(context);
+    if(response.ok)return data;
+    // Only a gateway JWT rejection is safe to retry for a write; reuse the original body and request ID.
+    const expired=expiredJwtResponse(response,data);
+    const gatewayRejected=['PGRST301','PGRST303'].includes(data?.code);
+    if(attempt===0&&expired&&(!write||gatewayRejected)){
+      session=await refreshDataSession(context,token);
+      if(session.access_token!==token)continue;
+    }
+    if(expired)needsDataLogin();
+    const error=new Error(expired?'Нэвтрэх хугацаа дууссан. DATA-д дахин нэвтэрнэ үү.':(data?.message||raw||('HTTP '+response.status)));
+    if(!expired||!write||gatewayRejected)error.status=response.status;
+    throw error;
+  }
+}
+function api(path,options){return dataRest(path,options);}
+function apiRpc(name,payload){return dataRest('rpc/'+name,{method:'POST',body:JSON.stringify(payload)},true);}
 
 async function loadData() {
   try {
@@ -1162,6 +1202,7 @@ const loginError = document.getElementById("authError");
 const loginSubmit = document.getElementById("authSubmit");
 const logoutButton = document.getElementById("logoutButton");
 async function applySession(session) {
+  authEpoch++;authNeedsLogin=false;
   if (activeSession?.user?.id !== session?.user?.id) {statusPendingU5.clear();meterPendingQ6.clear();meterLatestQ6.clear();kmPendingQ7.clear();kmLatestQ7.clear();}
   activeSession = session;
   updateToolbarQ6();
@@ -1228,6 +1269,12 @@ document.getElementById("authForm").addEventListener("submit", async function(e)
 logoutButton.addEventListener("click", async function() {
   await authClient.auth.signOut();
   await applySession(null);
+});
+authClient.auth.onAuthStateChange((event,session)=>{
+  // Supabase handles storage; update the token used by our direct REST calls without reloading forms.
+  if(event==='TOKEN_REFRESHED'&&!authNeedsLogin&&session?.access_token&&session.user?.id===activeSession?.user?.id){
+    activeSession=session;
+  }
 });
 (async function startAuth() {
   try {
@@ -2419,7 +2466,7 @@ function replaceScope(original,latest,matches){
  if(equal(prior,latest))return original;
  return [...original.filter(row=>!matches(row)),...latest];
 }
-function canRead(){return !!activeSession?.access_token&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
+function canRead(){return !!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
 async function tick(){
  if(busy||!canRead()||Date.now()-last<1200)return;
  last=Date.now();busy=true;const who=activeSession,version=revision,where=page(),scope=requestScope(where),controller=new AbortController();
