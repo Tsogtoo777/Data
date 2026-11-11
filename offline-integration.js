@@ -57,7 +57,18 @@ panel.innerHTML='<div id="offlineQContent"><div style="display:flex;gap:12px;jus
 document.body.append(panel);
 $('offlineQClose').onclick=()=>{opened=false;panel.hidden=true};
 panel.onclick=e=>{if(e.target===panel){opened=false;panel.hidden=true}};
-$('offlineQRetry').onclick=()=>void sync();
+$('offlineQRetry').onclick=()=>void retryPending();
+async function retryPending(){
+  if(!navigator.onLine){toast('Дахин илгээхэд интернэт хэрэгтэй.');return;}
+  const uid=user();if(!uid){toast('Эхлээд нэвтэрнэ үү.');return;}
+  for(const row of await store.list(uid)){
+    if(row.state==='setup-required'){
+      row.state='pending';row.error='';
+      await store.updateRecord(row);
+    }
+  }
+  await sync();
+}
 async function renderQueue(){
   let rows=[];
   try{if(user())rows=await store.list(user());}catch(e){bar.textContent='Offline санах ой алдаа: '+e.message;return;}
@@ -92,12 +103,16 @@ async function syncNow(){
     const rows=await store.list(uid);
     for(const row of rows){
       if(!navigator.onLine||!onlineSession()||user()!==uid)break;
-      if(['conflict','needs-review','setup-required'].includes(row.state))continue;
+      if(['conflict','needs-review'].includes(row.state))continue;
+      // Missing RPC can be installed later; retry with the SAME UUID (never create a duplicate).
+      if(row.state==='setup-required'&&Date.now()-Date.parse(row.lastAttemptAt||'1970-01-01')<300000)continue;
       if(row.smu!==null||row.km!==null){
         row.state='needs-review';row.error='Энэ төлөвийн мотоцаг/км заалтыг тусад нь тулгаж шалгах хэрэгтэй. Автоматаар илгээсэнгүй.';
         await store.updateRecord(row);continue;
       }
       try{
+        row.lastAttemptAt=new Date().toISOString();
+        await store.updateRecord(row);
         const result=await apiRpc('ets_offline_status_v1',{
           p_request:row.requestId,p_equipment:row.equipmentId,p_status:row.status,
           p_recorded_at:row.recordedAt,p_operator:row.operator||null,p_comment:row.comment||null
