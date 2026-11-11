@@ -449,7 +449,33 @@ async function dataRest(path,options={},rpc=false){
 function api(path,options){return dataRest(path,options);}
 function apiRpc(name,payload){return dataRest('rpc/'+name,{method:'POST',body:JSON.stringify(payload)},true);}
 
+async function restoreOfflineSnapshot() {
+  const uid=activeSession?.user?.id;
+  if(!window.DataOffline||!uid)return false;
+  try{
+    const saved=await DataOffline.getSnapshot(uid);
+    if(!saved?.data?.equipment?.length||!saved?.data?.statuses?.length)return false;
+    const s=saved.data;
+    equipment=s.equipment;statuses=s.statuses;events=s.events||[];
+    productionLogs=s.productionLogs||[];sharedOperators=s.sharedOperators||{};
+    blockLocations=s.blockLocations||[];operatorSyncReady=true;
+    render();renderProduction();renderReport();
+    document.dispatchEvent(new CustomEvent('data-offline-snapshot-loaded'));
+    return true;
+  }catch(error){console.warn('Offline metadata restore failed:',error);return false;}
+}
+async function saveOfflineSnapshot(){
+  const uid=activeSession?.user?.id;
+  if(!window.DataOffline||!uid||!equipment.length||!statuses.length)return false;
+  const snapshot={equipment,statuses,events,productionLogs,sharedOperators,blockLocations};
+  try{
+    await DataOffline.saveSnapshot(uid,snapshot);
+    document.dispatchEvent(new CustomEvent('data-offline-snapshot-saved'));
+    return true;
+  }catch(error){console.warn('Offline metadata save failed:',error);return false;}
+}
 async function loadData() {
+  if(!navigator.onLine && await restoreOfflineSnapshot())return;
   try {
     equipment = await api("equipment?select=*&order=name");
     const statusRows = await api("status_types?select=name&order=id");
@@ -471,28 +497,20 @@ async function loadData() {
     const operatorRows = await api("equipment_operator_names?select=equipment_id,operator_name");
     sharedOperators = Object.fromEntries(operatorRows.map(row => [String(row.equipment_id), String(row.operator_name || "")]));
     operatorSyncReady = true;
+    // Persist the usable reference data BEFORE rendering any secondary views.
+    // Rendering can throw on a browser feature without losing offline readiness.
+    await saveOfflineSnapshot();
     render();
     renderProduction();
     renderReport();
-    if(window.DataOffline && activeSession?.user?.id){
-      const snapshot={equipment,statuses,events,productionLogs,sharedOperators,blockLocations};
-      void DataOffline.saveSnapshot(activeSession.user.id,snapshot).catch(()=>{});
-    }
   } catch (error) {
-    if(window.DataOffline && activeSession?.user?.id){
-      try{
-        const saved=await DataOffline.getSnapshot(activeSession.user.id);
-        if(saved?.data?.equipment?.length){
-          ({equipment,statuses,events,productionLogs,sharedOperators,blockLocations}=saved.data);
-          operatorSyncReady=true;
-          render();renderProduction();renderReport();
-          toast('Offline: утсанд хадгалсан техник, төлөвийн жагсаалт ашиглаж байна.');
-          return;
-        }
-      }catch(_){}
+    if(await restoreOfflineSnapshot()){
+      toast('Offline: хамгийн сүүлд хадгалсан техник, төлөвийг харуулж байна.');
+      return;
     }
-    const message = '<div class="err"><b>Supabase уншихад алдаа гарлаа.</b><br>' +
-      esc(error.message) + '</div>';
+    const offlineHint=!navigator.onLine||/Failed to fetch|NetworkError|fetch failed/i.test(String(error.message));
+    const message = '<div class="err"><b>'+(offlineHint?'Offline мэдээлэл бэлэн биш.':'Supabase уншихад алдаа гарлаа.')+'</b><br>' +
+      esc(error.message) + (offlineHint?'<br>Сүлжээтэй үед ЭНЭ ХАЯГАА нээгээд техник, төлөв бүрэн ачаалсны дараа “Offline бэлдэх” дарна уу. Интернэтгүй үед өмнө нь хадгалсан мэдээллийг л ашиглаж болно.':'') + '</div>';
     document.getElementById("dash").innerHTML = message;
     document.getElementById("eq").innerHTML = message;
   }
@@ -1294,8 +1312,10 @@ async function applySession(session) {
   if (session) {
     loginError.textContent = "";
     await loadData();
-    loadMeterLatestQ6();
-    loadKmLatestQ7();
+    if(navigator.onLine && session.access_token!=='offline-only'){
+      loadMeterLatestQ6();
+      loadKmLatestQ7();
+    }
   } else {
     equipment = []; events = []; productionLogs = []; blockLocations = [];
     sharedOperators = {}; operatorSyncReady = false;
@@ -2570,7 +2590,7 @@ function makeSyncHealthNotice(){
  }
  return {
   ok(){missed=0;lastSuccess=Date.now();if(node)node.hidden=true;},
-  fail(){if(++missed<2)return;const el=ensure();const time=lastSuccess?new Date(lastSuccess).toLocaleTimeString('mn-MN',{hour:'2-digit',minute:'2-digit'}):'тодорхойгүй';el.textContent='⚠ Мэдээлэл шинэчлэгдсэнгүй. Дэлгэц дээрх төлөв хуучирсан байж болно. Сүүлд амжилттай шалгасан: '+time+'. Сүлжээ сэргэсэн үед автоматаар дахин шалгана.';el.hidden=false;},
+  fail(){if(!navigator.onLine||activeSession?.access_token==='offline-only'){missed=0;if(node)node.hidden=true;return;}if(++missed<2)return;const el=ensure();const time=lastSuccess?new Date(lastSuccess).toLocaleTimeString('mn-MN',{hour:'2-digit',minute:'2-digit'}):'тодорхойгүй';el.textContent='⚠ Мэдээлэл шинэчлэгдсэнгүй. Дэлгэц дээрх төлөв хуучирсан байж болно. Сүүлд амжилттай шалгасан: '+time+'. Сүлжээ сэргэсэн үед автоматаар дахин шалгана.';el.hidden=false;},
   reset(){missed=0;if(node)node.hidden=true;}
  };
 }
@@ -2627,7 +2647,7 @@ function replaceScope(original,latest,matches){
  if(equal(prior,latest))return original;
  return [...original.filter(row=>!matches(row)),...latest];
 }
-function canRead(){return !!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
+function canRead(){return navigator.onLine&&activeSession?.access_token!=='offline-only'&&!!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
 async function tick(){
  if(!activeSession?.access_token)syncHealth.reset();
  if(busy||!canRead()||Date.now()-last<1200)return;
