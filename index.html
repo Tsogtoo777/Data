@@ -1602,6 +1602,7 @@ function wholeShiftMinutes(workMs,stopMs){
  for(const bucket of buckets)bucket.whole=Math.floor(bucket.ms/60000);
  const remaining=720-buckets.reduce((sum,bucket)=>sum+bucket.whole,0);
  const ranked=buckets.slice().sort((a,b)=>(b.ms%60000)-(a.ms%60000)||b.ms-a.ms);
+ if(remaining<0||remaining>ranked.length||!Number.isInteger(remaining))throw Error('ERP-ийн бүхэл минутын хуваарилалт буруу.');
  for(let i=0;i<remaining;i++)ranked[i].whole++;
  return {work:buckets[0].whole,minutes:Object.fromEntries(buckets.slice(1).map(bucket=>[bucket.column,bucket.whole]))};
 }
@@ -1638,24 +1639,25 @@ function calculate({day,shift,template,equipment,events,roster,operatorSelection
    if(end>Math.max(start,lo))rows.push({...e,a:Math.max(lo,start),b:end,recordedLimit:Math.min(recordedEnd,hi),projected:project});
   }
   rows.sort((a,b)=>a.a-b.a||String(a.id).localeCompare(String(b.id)));let cursor=lo,overlapCursor=lo,workMs=0;const stopMs={},operators=new Map();
-  for(const e of rows){const identifier=String(e.id);if(seen.has(identifier)){addIssue(tr.name+': давхардсан бүртгэлийн ID '+identifier,eq,e.id);continue;}seen.add(identifier);if(e.a>cursor+1)addIssue(tr.name+': '+((e.a-cursor)/60000).toFixed(2)+' минутын бүртгэлгүй завсар',eq);if(e.a<overlapCursor-1)addIssue(tr.name+': ID '+e.id+' давхцаж байна',eq,e.id);cursor=Math.max(cursor,e.b);overlapCursor=Math.max(overlapCursor,e.recordedLimit);
+  for(const e of rows){const identifier=String(e.id);if(seen.has(identifier)){addIssue(tr.name+': давхардсан бүртгэлийн ID '+identifier,eq,e.id);continue;}seen.add(identifier);if(e.a>cursor)addIssue(tr.name+': '+((e.a-cursor)/1000).toFixed(3)+' секунд бүртгэлгүй завсар (ID '+e.id+')',eq,e.id);if(e.a<overlapCursor)addIssue(tr.name+': ID '+e.id+' давхцаж байна',eq,e.id);cursor=Math.max(cursor,e.b);overlapCursor=Math.max(overlapCursor,e.recordedLimit);
    const elapsed=e.b-e.a,duration=elapsed/60000,k=statusKey(e.status);
    const statusColumn=headerMap.get(k)??(CHANGEOVER_KEYS.includes(k)?CHANGEOVER_KEYS.map(alias=>headerMap.get(alias)).find(Boolean):undefined);
    if(k===statusKey('Б Бүтээлтэй'))workMs+=elapsed;else if(statusColumn)stopMs[statusColumn]=(stopMs[statusColumn]||0)+elapsed;else addIssue(tr.name+': Excel баганад таарахгүй төлөв «'+e.status+'»',eq,e.id);
    if(e.projected)projectedOpenStatuses.push({name:tr.name,status:e.status,minutes:(hi-now)/60000});
    if(e.operator_name?.trim())operators.set(e.operator_name.trim(),(operators.get(e.operator_name.trim())||0)+duration);else if(k===statusKey('Б Бүтээлтэй'))addIssue(tr.name+': бүтээлтэй мөрийн оператор дутуу (ID '+e.id+')',eq,e.id);
   }
-  if(cursor<target-1)addIssue(tr.name+': '+(partial?'Одоог хүртэл ':'Ээлжийн төгсгөл хүртэл ')+((target-cursor)/60000).toFixed(2)+' минут бүртгэлгүй'+(early&&!partial?' — сүүлийн төлөв үргэлжилж байвал дуусах цагийг шалгана уу':''),eq);
+  if(cursor<target)addIssue(tr.name+': '+(partial?'Одоог хүртэл ':'Ээлжийн төгсгөл хүртэл ')+((target-cursor)/1000).toFixed(3)+' секунд бүртгэлгүй'+(early&&!partial?' — сүүлийн төлөв үргэлжилж байвал дуусах цагийг шалгана уу':''),eq);
   let operator=null;const matched=[];for(const [name,minutes] of operators){const m=findOperator(name,roster);if(m.length!==1)addIssue(tr.name+': «'+name+'» операторын код/овог/нэр '+(m.length?'давхардсан':'лавлахад олдсонгүй'),eq,rows.find(r=>r.operator_name?.trim()===name)?.id);else matched.push({...m[0],minutes});}
   const unique=new Map();for(const item of matched){const code=String(item.code),prior=unique.get(code);unique.set(code,{...item,minutes:(prior?.minutes||0)+item.minutes});}
   const operatorOptions=[...unique.values()];
   const selected=operatorSelections[String(eq.id)];
   operator=operatorOptions[0]||null;
 
-  const total=(workMs+Object.values(stopMs).reduce((sum,ms)=>sum+ms,0))/60000;
+  const totalMs=workMs+Object.values(stopMs).reduce((sum,ms)=>sum+ms,0);const total=totalMs/60000;
   if(partial)continue;
-  if(Math.abs(total-720)>0.0001){addIssue(tr.name+': төлвүүдийн нийлбэр '+total.toFixed(4)+' минут, 720-той таарахгүй',eq);continue;}
+  if(totalMs!==hi-lo){addIssue(tr.name+': хугацааны нийлбэр '+(totalMs/1000).toFixed(3)+' секунд, 43,200 секундтэй таарахгүй (зөрүү '+((hi-lo-totalMs)/1000).toFixed(3)+' секунд)',eq);continue;}
   const {work,minutes}=wholeShiftMinutes(workMs,stopMs),stop=720-work;
+  if(work+Object.values(minutes).reduce((acc,mins)=>acc+mins,0)!==720){addIssue(tr.name+': ERP бүхэл минут 720-той тэнцээгүй',eq);continue;}
   result.push({row:tr.row,name:tr.name,equipment_id:eq.id,operator,operatorOptions,minutes,work,stop});
  }
  for(const e of equipment)if(!mapped.has(String(e.id)))excluded.push(e.name);

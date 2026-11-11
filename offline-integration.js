@@ -91,10 +91,11 @@ async function prepareOffline(){
 const css=document.createElement('style');
 css.textContent='#offlineQBar{position:fixed;left:12px;bottom:12px;z-index:70;background:#252c35;color:white;border:1px solid #fa9d3b;border-radius:9px;padding:8px 10px;font-size:13px;box-shadow:0 5px 20px #0006}#offlineQBar button{margin-left:7px}#offlineQPanel{position:fixed;inset:0;z-index:90;background:#000c;display:flex;align-items:center;justify-content:center;padding:12px}#offlineQPanel[hidden]{display:none}#offlineQContent{background:#242b33;color:white;border-radius:12px;border:1px solid #555;width:min(580px,100%);padding:14px;max-height:85vh;overflow:auto}#offlineQRows article{border-top:1px solid #4c5965;padding:10px 0}#offlineQRows .offline-error{color:#ffc28a;white-space:pre-wrap}';
 css.textContent+='.current .offline-status-note{display:inline-block;margin-top:6px;font-size:11px;line-height:1.4;font-weight:600;color:#e6bc75;background:rgba(101,70,32,.18);border:1px solid rgba(242,167,62,.35);border-radius:6px;padding:3px 7px}.current .offline-status-warning{color:#ffa19a;background:rgba(110,37,37,.24);border-color:rgba(248,123,110,.55)}';
+css.textContent+='#offlineQBar{left:auto;bottom:auto;top:calc(86px + env(safe-area-inset-top,0px));right:8px;width:auto;max-width:180px;padding:4px 5px;border-radius:24px;opacity:.96}#offlineQBar button{margin:0;background:transparent;border:0;color:inherit;min-height:34px;padding:4px 9px;font-weight:700;font-size:12px;white-space:nowrap}body:has(#statusModal.open) #offlineQBar{display:none!important}';
 document.head.append(css);
 const bar=document.createElement('div');bar.id='offlineQBar';bar.setAttribute('role','status');document.body.append(bar);
 const panel=document.createElement('div');panel.id='offlineQPanel';panel.hidden=true;
-panel.innerHTML='<div id="offlineQContent"><div style="display:flex;gap:12px;justify-content:space-between"><h2>Offline бүртгэлүүд</h2><button id="offlineQClose">Хаах</button></div><p>Эдгээр бүртгэл серверт баталгаажаагүй. Синк дуустал браузерын өгөгдөл цэвэрлэж болохгүй.</p><div id="offlineQRows"></div><button type="button" id="offlineQRetry">Дахин илгээх</button></div>';
+panel.innerHTML='<div id="offlineQContent"><div style="display:flex;gap:12px;justify-content:space-between"><h2>Offline бүртгэлүүд</h2><button id="offlineQClose">Хаах</button></div><p>Эдгээр бүртгэл серверт баталгаажаагүй. Синк дуустал браузерын өгөгдөл цэвэрлэж болохгүй.</p><p id="offlineQReadyNote" style="font-size:12px;color:#ffd69e"></p><div id="offlineQPreparePanel"></div><div id="offlineQRows"></div><button type="button" id="offlineQRetry">Дахин илгээх</button></div>';
 document.body.append(panel);
 $('offlineQClose').onclick=()=>{opened=false;panel.hidden=true};
 panel.onclick=e=>{if(e.target===panel){opened=false;panel.hidden=true}};
@@ -119,9 +120,11 @@ async function renderQueue(){
   const shellReady=await cachedShellReady();
   const ready=dataReady&&shellReady;
   const label=navigator.onLine?(ready?'● Online · Offline бэлэн':'● Online · Offline бэлтгэлгүй'):(ready?'● Offline · Хадгалсан мэдээлэл':'● Offline · Бэлтгэлгүй');
-  bar.innerHTML='<span>'+label+' · Илгээгээгүй: <strong>'+rows.length+'</strong></span>'+(!ready&&navigator.onLine?'<button type="button" id="offlineQPrepare" '+(preparing?'disabled':'')+'>Offline бэлдэх</button>':'')+'<button type="button" id="offlineQOpen">Жагсаалт</button>';
-  const prepareButton=$('offlineQPrepare');if(prepareButton)prepareButton.onclick=()=>void prepareOffline();
+  bar.innerHTML='<button type="button" id="offlineQOpen" aria-label="Offline бүртгэлийн жагсаалт, илгээгдээгүй '+rows.length+'">'+(navigator.onLine?'● Online':'● Offline')+' · '+rows.length+'</button>';
   $('offlineQOpen').onclick=()=>{opened=true;panel.hidden=false;void renderQueue();};
+  const note=$('offlineQReadyNote');if(note)note.textContent=label+' · Илгээгдээгүй: '+rows.length;
+  const tools=$('offlineQPreparePanel');
+  if(tools){tools.innerHTML=!ready&&navigator.onLine?'<button type="button" id="offlineQPrepare">Offline бэлдэх</button>':'';const btn=$('offlineQPrepare');if(btn){btn.disabled=preparing;btn.onclick=()=>void prepareOffline();}}
   if(!opened)return;
   $('offlineQRows').innerHTML=rows.length?rows.map(row=>'<article><b>'+esc(row.equipmentName)+' · '+esc(row.status)+'</b><div>'+display(row.recordedAt)+' (УБ цаг)</div><small>Оператор: '+esc(row.operator||'—')+'</small><p>'+esc(row.comment||'')+'</p>'+(row.smu!==null||row.km!==null?'<p>SMU: '+esc(row.smu??'—')+' · KM: '+esc(row.km??'—')+'</p>':'')+'<div class="offline-error">'+esc(row.error||'Серверт илгээгээгүй')+'</div><button type="button" data-offline-delete="'+esc(row.requestId)+'">Утсан дээрх бүртгэлийг устгах</button></article>').join(''):'<p>Хүлээгдсэн бүртгэл алга.</p>';
   for(const b of $('offlineQRows').querySelectorAll('[data-offline-delete]'))b.onclick=async()=>{
