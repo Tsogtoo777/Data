@@ -1066,6 +1066,8 @@ function renderReportProductionHistory(){
   host.innerHTML='<b>Өдрийн бүтээл</b>'+(prodRows||'<p><small>Бүтээлийн бүртгэл алга.</small></p>');
 }
 // Excel export only: sort copies, never mutate the original data arrays.
+// Explicit Mongolia time including seconds; never depend on a browser locale that hides seconds.
+const excelMoment=t=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ulaanbaatar',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(t));
 function exportEventsOldestFirst(items) {
   return [...items].sort((a,b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 }
@@ -1082,8 +1084,8 @@ function exportDailyReport() {
   const day=document.getElementById("reportDate")?.value||localDateValue();
   const ev=exportEventsOldestFirst(events.filter(e=>localDateValue(new Date(e.start_time))===day)).map(e=>({
     "Огноо":day,"Техник":(equipment.find(x=>String(x.id)===String(e.equipment_id))||{}).name||e.equipment_id,
-    "Төлөв":e.status,"Эхэлсэн":new Date(e.start_time).toLocaleString("mn-MN"),
-    "Дууссан":e.end_time?new Date(e.end_time).toLocaleString("mn-MN"):"Одоог хүртэл",
+    "Төлөв":e.status,"Эхэлсэн":excelMoment(e.start_time),
+    "Дууссан":e.end_time?excelMoment(e.end_time):"Одоог хүртэл",
     "Оператор":e.operator_name||"","SMU":e.smu??"","KM":e.km??"","Тайлбар":e.comment||""
   }));
   const pr=exportProductionOldestFirst(productionLogs.filter(x=>x.production_date===day)).map(x=>({
@@ -1115,7 +1117,7 @@ function exportHour() {
     const item = equipment.find(function(x){ return String(x.id) === String(event.equipment_id); });
     return {
       "Огноо":new Date(event.start_time).toLocaleDateString("mn-MN"),
-      "Цаг":new Date(event.start_time).toLocaleTimeString("mn-MN",{hour:"2-digit",minute:"2-digit"}),
+      "Цаг":new Date(event.start_time).toLocaleTimeString("mn-MN",{hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}),
       "Техник":item ? item.name : event.equipment_id,
       "Техникийн төрөл":item ? item.equipment_type : "",
       "Төлөв":event.status,
@@ -1160,8 +1162,8 @@ function exportAll() {
     const item = equipment.find(function(x){ return String(x.id) === String(event.equipment_id); });
     return {
       "Огноо":new Date(event.start_time).toLocaleDateString("mn-MN"),
-      "Эхэлсэн цаг":new Date(event.start_time).toLocaleString("mn-MN"),
-      "Дууссан цаг":event.end_time ? new Date(event.end_time).toLocaleString("mn-MN") : "",
+      "Эхэлсэн цаг":excelMoment(event.start_time),
+      "Дууссан цаг":event.end_time ? excelMoment(event.end_time) : "",
       "Техник":item ? item.name : event.equipment_id,
       "Техникийн төрөл":item ? item.equipment_type : "",
       "Төлөв":event.status,
@@ -2035,7 +2037,7 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
 (function(){'use strict';
  const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const localDay=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
- const fmt=t=>new Date(t+8*3600000).toISOString().slice(0,16).replace('T',' ');
+ const fmt=t=>new Date(t+8*3600000).toISOString().slice(0,19).replace('T',' ');
 
  // Modify OOXML container directly to prevent SheetJS rewriting pre-existing
  // styles, defined names, formulas, comments and relationships.
@@ -2170,7 +2172,7 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  let rows=[],offset=0;while(true){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc&limit=1000&offset='+offset;
  const page=await api(qs);if(!Array.isArray(page))throw Error('Бүртгэлийн хариу буруу');rows.push(...page);if(page.length<1000)break;offset+=page.length;if(offset>50000)throw Error('Хэт олон бүртгэл: мэдээллийг хувааж шалгана уу');}
  const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));let issues=[],detail=[],agg=new Map();
- for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round((end-start)/60000*100)/100;detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
+ for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round((end-start)/60000*1e6)/1e6;detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
  if(!detail.length)throw Error('Энэ ээлжид бүртгэл олдсонгүй.');if(!section.querySelector('#erdReplace').checked)throw Error('Өмнө бөглөгдсөн ээлжийн мэдээллийг шинэчлэх зөвшөөрлийг чагтална уу.');if(!file)throw Error('ERP Daily Excel загвар сонгоно уу');
  // Safe ZIP-level export: preserve every existing workbook part verbatim;
  // add only independent worksheets and the minimum workbook/package links.
@@ -2196,7 +2198,7 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  }
  // Independent Daily Report → Мэдээ exporter. Does not modify existing import/export features.
  function drXmlEsc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
- function drDateLabel(ms){return new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ms));}
+ function drDateLabel(ms){return new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ulaanbaatar',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(ms));}
  const DR_NEWS_EQUIPMENT=['Sandvik DI650I','Sandvik 410iE-01 229','Sandvik 410iE-02 165','PC4000','PC3000-6D','Komatsu 830E 276','Komatsu 830E 296','Komatsu 830E 297','Komatsu 830E 303','Komatsu 830E 304','Komatsu 830E 305','Komatsu 830E 306','CAT994','WA 900','CAT D10T-01','CAT 16M-01','CAT 16M-02','Water truck-01'];
  function drNewsKey(name){
    const normalized=normalizeERP(name);
