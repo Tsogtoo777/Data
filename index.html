@@ -6,6 +6,7 @@
 <title>Data Event</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="/offline-store.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f4f7fb;color:#172033;font-family:system-ui,sans-serif}
@@ -473,7 +474,23 @@ async function loadData() {
     render();
     renderProduction();
     renderReport();
+    if(window.DataOffline && activeSession?.user?.id){
+      const snapshot={equipment,statuses,events,productionLogs,sharedOperators,blockLocations};
+      void DataOffline.saveSnapshot(activeSession.user.id,snapshot).catch(()=>{});
+    }
   } catch (error) {
+    if(window.DataOffline && activeSession?.user?.id){
+      try{
+        const saved=await DataOffline.getSnapshot(activeSession.user.id);
+        if(saved?.data?.equipment?.length){
+          ({equipment,statuses,events,productionLogs,sharedOperators,blockLocations}=saved.data);
+          operatorSyncReady=true;
+          render();renderProduction();renderReport();
+          toast('Offline: утсанд хадгалсан техник, төлөвийн жагсаалт ашиглаж байна.');
+          return;
+        }
+      }catch(_){}
+    }
     const message = '<div class="err"><b>Supabase уншихад алдаа гарлаа.</b><br>' +
       esc(error.message) + '</div>';
     document.getElementById("dash").innerHTML = message;
@@ -632,7 +649,12 @@ async function applyStatusResultQ6(result,payload){const row=result.event;if(res
 events=events.filter(x=>String(x.id)!==String(row.id));events.unshift(row);render();renderReport();}
 async function setStatus(equipmentId,status,details){
  if(statusActionBusyU5||!statusEditorU5())return;const item=equipment.find(x=>String(x.id)===String(equipmentId));if(!item)return;
- statusActionBusyU5=true;const button=document.getElementById('saveEvent');if(button)button.disabled=true;const key='set:'+equipmentId;
+ if(window.DataEventOfflineBridge && (!navigator.onLine || activeSession?.access_token==='offline-only')){
+   try{await DataEventOfflineBridge.queueStatus(equipmentId,status,details||{});}
+   catch(error){alert('Утсанд хадгалагдсангүй: '+error.message);}
+   return;
+ }
+ statusActionBusyU5=true;const button=document.getElementById('saveEvent');if(button)button.disabled=true;const key='set:'+equipmentId;let statusWriteAttempted=false;
  try{if(statusPendingU5.has('global-undo'))throw Error('Өмнөх буцаалтын хариуг эхлээд буцаах товчоор шалгана уу.');
  let payload=statusPendingU5.get(key);
  if(payload){if(!confirm('Өмнөх '+payload.p_status+' хүсэлтийн хариуг давхардуулахгүй дахин шалгах уу?'))return;}
@@ -640,8 +662,16 @@ async function setStatus(equipmentId,status,details){
  if(smu!==null){const check=await apiRpc('ets_meter_action_q6',{p_action:'preview',p_equipment:String(equipmentId)});const previous=check.last_value??check.legacy_value;if(previous!=null&&smu<Number(previous)){if(!confirm('Өмнөх моточаг '+previous+'-аас бага '+smu+' заалт оруулах уу?'))return;allowLower=true;}}
  if(km!==null){const check=await apiRpc('ets_km_action_q7',{p_action:'preview',p_equipment:String(equipmentId)});const previous=check.last_value??check.legacy_value;if(previous!=null&&km<Number(previous)){if(!confirm('Өмнөх км '+previous+'-аас бага '+km+' заалт оруулах уу?'))return;allowLowerKm=true;}}
  const preview=await previewStatusU5(equipmentId);payload={p_action:'set',p_equipment:String(equipmentId),p_request:crypto.randomUUID(),p_expected:preview.snapshot,p_status:status,p_details:{operator_name:getOperator(equipmentId)||null,smu,km,comment:String(d.comment||'').trim()||null,allow_lower:allowLower,allow_lower_km:allowLowerKm}};}
- const result=await dispatchStatusU5(key,payload);closeStatusModal();await applyStatusResultQ6(result,payload);if(payload.p_details.smu!==null)loadMeterLatestQ6();if(payload.p_details.km!==null)loadKmLatestQ7();toast(item.name+' → '+payload.p_status);
- }catch(error){if(definitiveFailureQ6(error))statusPendingU5.delete(key);alert('Хадгалалт батлагдсангүй: '+error.message+'\nХариу тасарсан бол төлөвөө шалгаж, ижил хүсэлтийг дахин шалгана уу.');}
+ statusWriteAttempted=true;const result=await dispatchStatusU5(key,payload);closeStatusModal();await applyStatusResultQ6(result,payload);if(payload.p_details.smu!==null)loadMeterLatestQ6();if(payload.p_details.km!==null)loadKmLatestQ7();toast(item.name+' → '+payload.p_status);
+ }catch(error){
+   if(!statusWriteAttempted && window.DataEventOfflineBridge &&
+      /Failed to fetch|NetworkError|Load failed|fetch failed|Сүлжээгээ шалгаад/i.test(String(error.message))){
+     try{await DataEventOfflineBridge.queueStatus(equipmentId,status,details||{});return;}
+     catch(localError){alert('Утсанд хадгалагдсангүй: '+localError.message);}
+   }
+   if(definitiveFailureQ6(error))statusPendingU5.delete(key);
+   alert('Хадгалалт батлагдсангүй: '+error.message+'\nХариу тасарсан бол төлөвөө шалгаж, ижил хүсэлтийг дахин шалгана уу.');
+ }
  finally{statusActionBusyU5=false;if(button)button.disabled=false;}
 }
 async function globalUndoQ6(){
@@ -1253,6 +1283,9 @@ async function applySession(session) {
   authEpoch++;authNeedsLogin=false;
   if (activeSession?.user?.id !== session?.user?.id) {statusPendingU5.clear();meterPendingQ6.clear();meterLatestQ6.clear();kmPendingQ7.clear();kmLatestQ7.clear();}
   activeSession = session;
+  if(window.DataOffline && session?.user?.id && session.access_token!=='offline-only'){
+    void DataOffline.rememberUser(session.user).catch(()=>{});
+  }
   updateToolbarQ6();
   document.body.classList.toggle('etts-viewer', isReadOnlyViewer());
   if (isReadOnlyViewer()) { closeStatusModal(); showPage('dash'); }
@@ -1316,6 +1349,7 @@ document.getElementById("authForm").addEventListener("submit", async function(e)
 });
 logoutButton.addEventListener("click", async function() {
   await authClient.auth.signOut();
+  if(window.DataOffline)await DataOffline.forgetUser().catch(()=>{});
   await applySession(null);
 });
 authClient.auth.onAuthStateChange((event,session)=>{
@@ -1328,8 +1362,25 @@ authClient.auth.onAuthStateChange((event,session)=>{
   try {
     const {data, error} = await authClient.auth.getSession();
     if (error) throw error;
-    if (data.session) await applySession(data.session);
-  } catch(err) { loginError.textContent = "Нэвтрэлтийг шалгахад алдаа: " + err.message; }
+    if(data.session)await applySession(data.session);
+    else if(!navigator.onLine && window.DataOffline){
+      const cached=await DataOffline.lastUser();
+      if(cached?.id && cached.app_metadata?.role){
+        await applySession({user:cached,access_token:'offline-only',expires_at:9999999999});
+      }
+    }
+  } catch(err) {
+    if(!navigator.onLine && window.DataOffline){
+      try{
+        const cached=await DataOffline.lastUser();
+        if(cached?.id && cached.app_metadata?.role){
+          await applySession({user:cached,access_token:'offline-only',expires_at:9999999999});
+          loginError.textContent='';return;
+        }
+      }catch(_){}
+    }
+    loginError.textContent = "Нэвтрэлтийг шалгахад алдаа: " + err.message;
+  }
 })();
 
 document.addEventListener("click", function(event) {
@@ -2678,5 +2729,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void tick(
 document.addEventListener('click',e=>{if(e.target.closest?.('nav button[data-page]'))setTimeout(tick,0);});
 })();
 </script>
+<script src="/offline-integration.js"></script>
 </body>
 </html>
