@@ -11,8 +11,8 @@
 ## Deployment checklist — REQUIRED
 1. Do not merge directly to main. Test on Vercel Preview first; verify app loads, login works, mobile layout and normal online status input work.
 2. Back up Supabase. Review `sql/ets_offline_status_v1.sql` against the live schema, triggers, current event constraints, RLS, and audit behavior. **Not automatically applied**. Prefer staging environment. The new RPC runs as SECURITY DEFINER, checks role and timestamps, and locks equipment rows.
-3. Open preview **online** at least once on each phone, sign in, reload once, and ensure equipment/status metadata loads. Only previously visited phones can work offline.
-4. Disable internet: refresh the already cached preview and submit a status; check that the pending counter increments and original time is displayed.
+3. Open the *exact same preview URL* **online** on the phone and sign in. Tap **Offline бэлдэх**, wait for **Online · Offline бэлэн**, then disconnect. New Vercel preview deployment URLs are separate browser origins; their caches and IndexedDB queues are NOT shared.
+4. Disable internet: refresh the EXACT SAME URL. Equipment/status must render from IndexedDB and show **Offline · Хадгалсан мэдээлэл**; then submit a test status (in staging only), verify pending count and original timestamp.
 5. Restore internet: with the SQL installed in staging, check the UUID is replayed exactly once and `equipment_events.start_time` is the original capture time.
 6. Simulate two devices submitting statuses for the same equipment; verify a conflict remains in the queue, with no auto-overwrite.
 7. Simulate a timeout after server commit; retry same request UUID and confirm no duplicate.
