@@ -2346,6 +2346,56 @@ function cell(row,col,n,value){
  const out=typeof value==='number'?base+'><v>'+value+'</v></c>':base+' t="inlineStr"><is><t xml:space="preserve">'+esc(value)+'</t></is></c>';
  return row.replace(old,out);
 }
+
+async function drSecondsStyles(zip,inputs){
+ const file=zip.file('xl/styles.xml');if(!file)throw Error('Excel styles.xml байхгүй');
+ let xml=await file.async('string');
+ const block=/<cellXfs\b([^>]*)>([\s\S]*?)<\/cellXfs>/.exec(xml);
+ if(!block)throw Error('Excel cellXfs байхгүй');
+ const xfs=[...block[2].matchAll(/<xf\b[^>]*\/>|<xf\b[^>]*>[\s\S]*?<\/xf>/g)].map(m=>m[0]);
+ if(xfs.length!==Number((/\bcount="(\d+)"/.exec(block[1])||[])[1]))throw Error('Excel style индекс зөрсөн');
+ const needed=new Set();
+ for(const [sheet,columns] of inputs){
+  for(const m of sheet.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g)){
+   const n=Number(m[1]);if(n<4)continue;
+   for(const col of columns){const tok=exactCell(m[0],col,n);if(tok)needed.add(Number((/\bs="(\d+)"/.exec(tok)||[])[1]||0));}
+  }
+ }
+ if(!needed.size)throw Error('Цагийн форматтай нүд олдсонгүй');
+ const formats=new Map([...xml.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"/g)].map(m=>[Number(m[1]),m[2]]));
+ const desired='yyyy-mm-dd hh:mm:ss';
+ const found=[...formats].find(x=>x[1]===desired);
+ const fmtId=found?found[0]:Math.max(163,...formats.keys(),...xfs.map(x=>Number((/\bnumFmtId="(\d+)"/.exec(x)||[])[1]||0)))+1;
+ const map=new Map(),extra=[];
+ for(const id of [...needed].sort((a,b)=>a-b)){
+  let x=xfs[id];if(!x)throw Error('Date style '+id+' олдсонгүй');
+  const existing=formats.get(Number((/\bnumFmtId="(\d+)"/.exec(x)||[])[1]||0));
+  if(existing===desired){map.set(id,id);continue;}
+  x=/\bnumFmtId="\d+"/.test(x)?x.replace(/\bnumFmtId="\d+"/,'numFmtId="'+fmtId+'"'):x.replace(/^<xf\b/,'<xf numFmtId="'+fmtId+'"');
+  x=/\bapplyNumberFormat="\d+"/.test(x)?x.replace(/\bapplyNumberFormat="\d+"/,'applyNumberFormat="1"'):x.replace(/^<xf\b/,'<xf applyNumberFormat="1"');
+  map.set(id,xfs.length+extra.length);extra.push(x);
+ }
+ if(extra.length){
+  if(!found){
+   const fm=/<numFmts\b([^>]*)>([\s\S]*?)<\/numFmts>/.exec(xml);
+   if(!fm)throw Error('Excel numFmts байхгүй');
+   const count=Number((/\bcount="(\d+)"/.exec(fm[1])||[])[1]||0);
+   xml=xml.replace(fm[0],'<numFmts'+fm[1].replace(/\bcount="\d+"/,'count="'+(count+1)+'"')+'>'+fm[2]+'<numFmt numFmtId="'+fmtId+'" formatCode="'+desired+'"/></numFmts>');
+  }
+  const attrs=block[1].replace(/\bcount="\d+"/,'count="'+(xfs.length+extra.length)+'"');
+  xml=xml.replace(block[0],'<cellXfs'+attrs+'>'+block[2]+extra.join('')+'</cellXfs>');
+  zip.file('xl/styles.xml',xml);
+ }
+ return map;
+}
+function drMarkSecondsStyle(row,col,n,map){
+ const tok=exactCell(row,col,n);if(!tok)throw Error('Цагийн Excel нүд олдсонгүй: '+col+n);
+ const before=Number((/\bs="(\d+)"/.exec(tok)||[])[1]||0),after=map.get(before);
+ if(after===undefined)throw Error('Цагийн style дутуу: '+col+n);
+ const head=(/^<c\b[^>]*>/.exec(tok)||[])[0];if(!head)throw Error('Цагийн нүдний XML буруу: '+col+n);
+ const next=/\bs="\d+"/.test(head)?head.replace(/\bs="\d+"/,'s="'+after+'"'):head.replace(/^<c\b/,'<c s="'+after+'"');
+ return row.replace(tok,next+tok.slice(head.length));
+}
 function inputColumns(sheet){
  return sheet==='Засварын зогсолт'?['A','B','C','D','E','F','G','H','I','J']:['A','B','C','D','E','F','G','I'];
 }
@@ -2390,7 +2440,7 @@ function refreshDurationCache(row,sheet,n,entry){
  const fresh=/<v>[\s\S]*?<\/v>/.test(tok)?tok.replace(/<v>[\s\S]*?<\/v>/,v):tok.replace('</c>',v+'</c>');
  return row.replace(tok,fresh);
 }
-function replaceRows(xml,data,fields,sheet,day,shift,sharedStrings,allowReplace){
+function replaceRows(xml,data,fields,sheet,day,shift,sharedStrings,allowReplace,secondsStyles){
  let offset=0,lastUsed=3,replaced=0,added=0;
  const inputCols=inputColumns(sheet), existing=existingShiftRows(xml,day,shift,sharedStrings);
  if(existing.length&&!allowReplace){
@@ -2426,6 +2476,7 @@ function replaceRows(xml,data,fields,sheet,day,shift,sharedStrings,allowReplace)
    }
    offset++;
   }
+  if(entry){for(const col of (sheet==='Засварын зогсолт'?['I','J']:['F','G']))changed=drMarkSecondsStyle(changed,col,n,secondsStyles);}
   changed=refreshDurationCache(changed,sheet,n,entry);
   return changed;
  });
@@ -2505,8 +2556,10 @@ async function run(all=false){if(dailyReportExportBusy)return;dailyReportExportB
   const allowReplace=$('drReplaceExistingShift').checked;
   const repPath=await targetPath(zip,'Засварын зогсолт'),opsPath=await targetPath(zip,'Ашиглалт зогсолт');
   const dayval=serial(Date.parse(day+'T00:00:00Z'));
-  const rep=replaceRows(await zip.file(repPath).async('string'),groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,H:e.erpStatus,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт',day,shift,sharedStrings,allowReplace);
-  const ops=replaceRows(await zip.file(opsPath).async('string'),groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serialLocal(e.start),G:serialLocal(e.end)}),'Ашиглалт зогсолт',day,shift,sharedStrings,allowReplace);
+  const repXml=await zip.file(repPath).async('string'),opsXml=await zip.file(opsPath).async('string');
+  const secondsStyles=await drSecondsStyles(zip,[[repXml,['I','J']],[opsXml,['F','G']]]);
+  const rep=replaceRows(repXml,groups.repair,e=>({A:dayval,B:shift,C:e.name,D:e.operator,F:e.status,H:e.erpStatus,I:serialLocal(e.start),J:serialLocal(e.end)}),'Засварын зогсолт',day,shift,sharedStrings,allowReplace,secondsStyles);
+  const ops=replaceRows(opsXml,groups.operating,e=>({A:dayval,B:shift,C:e.name,D:e.operator,E:e.status,F:serialLocal(e.start),G:serialLocal(e.end)}),'Ашиглалт зогсолт',day,shift,sharedStrings,allowReplace,secondsStyles);
   // Strictly confirm every newly written repair ERP reason before producing an Excel file.
   const hCells=[...rep.xml.matchAll(/<c\b(?=[^>]*\br="H\d+")[^>]*>[\s\S]*?<\/c>/g)]
      .filter(m=>/<t(?:\s[^>]*)?>[^<]+<\/t>/.test(m[0]));
