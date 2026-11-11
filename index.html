@@ -2590,7 +2590,7 @@ function makeSyncHealthNotice(){
  }
  return {
   ok(){missed=0;lastSuccess=Date.now();if(node)node.hidden=true;},
-  fail(){if(++missed<2)return;const el=ensure();const time=lastSuccess?new Date(lastSuccess).toLocaleTimeString('mn-MN',{hour:'2-digit',minute:'2-digit'}):'тодорхойгүй';el.textContent='⚠ Мэдээлэл шинэчлэгдсэнгүй. Дэлгэц дээрх төлөв хуучирсан байж болно. Сүүлд амжилттай шалгасан: '+time+'. Сүлжээ сэргэсэн үед автоматаар дахин шалгана.';el.hidden=false;},
+  fail(){if(!navigator.onLine||activeSession?.access_token==='offline-only'){missed=0;if(node)node.hidden=true;return;}if(++missed<2)return;const el=ensure();const time=lastSuccess?new Date(lastSuccess).toLocaleTimeString('mn-MN',{hour:'2-digit',minute:'2-digit'}):'тодорхойгүй';el.textContent='⚠ Мэдээлэл шинэчлэгдсэнгүй. Дэлгэц дээрх төлөв хуучирсан байж болно. Сүүлд амжилттай шалгасан: '+time+'. Сүлжээ сэргэсэн үед автоматаар дахин шалгана.';el.hidden=false;},
   reset(){missed=0;if(node)node.hidden=true;}
  };
 }
@@ -2647,7 +2647,7 @@ function replaceScope(original,latest,matches){
  if(equal(prior,latest))return original;
  return [...original.filter(row=>!matches(row)),...latest];
 }
-function canRead(){return !!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
+function canRead(){return navigator.onLine&&activeSession?.access_token!=='offline-only'&&!!activeSession?.access_token&&!authNeedsLogin&&!document.hidden&&!writes&&!loading&&!statusActionBusyU5&&!productionSaveBusy&&!document.getElementById('statusModal')?.classList.contains('open');}
 async function tick(){
  if(!activeSession?.access_token)syncHealth.reset();
  if(busy||!canRead()||Date.now()-last<1200)return;
