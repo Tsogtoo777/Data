@@ -811,7 +811,7 @@ function renderEquipment(){
           rosterOperatorPicker(x, operator) +
           '<button aria-label="Оператор цэвэрлэх" data-clear-operator-id="' + esc(x.id) + '">×</button>' +
         '</div>' +
-        '<div class="current"><span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span></div>' +
+        '<div class="current" data-offline-status-for="' + esc(x.id) + '">' + (window.DataEventOfflineBridge?.visualStatusHtml?.(x) || '<span class="status-chip ' + statusClass(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '">' + esc(x.current_status || "Бэлэн нөөцөнд зогсож байна | ЭЦС") + '</span>') + '</div>' +
         '<button class="status-trigger" data-open-status="' + esc(x.id) + '">Төлөв сонгох ▾</button>' +
         meterCardQ6(x) +
         equipmentLocationCard(x) +

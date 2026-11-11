@@ -8,6 +8,46 @@ const display=t=>new Date(t).toLocaleString('mn-MN',{timeZone:'Asia/Ulaanbaatar'
 const user=()=>activeSession?.user?.id||null;
 const onlineSession=()=>!!activeSession?.user?.id && !!activeSession.access_token && activeSession.access_token!=='offline-only' && !authNeedsLogin;
 let busy=false,opened=false,preparing=false;
+// Local view only. This must not overwrite the authoritative Supabase equipment state.
+let visualUser=null,visualRows=new Map();
+function latestServerEventTime(equipmentId){
+  let latest=0;
+  for(const ev of events){
+    if(String(ev.equipment_id)!==String(equipmentId))continue;
+    const t=Date.parse(ev.start_time);
+    if(Number.isFinite(t)&&t>latest)latest=t;
+  }
+  return latest;
+}
+function visualStatusHtml(item){
+  const row=visualUser===user()?visualRows.get(String(item.id)):null;
+  const fallback=item.current_status||'Бэлэн нөөцөнд зогсож байна | ЭЦС';
+  const serverNewer=!!row&&latestServerEventTime(item.id)>=Date.parse(row.recordedAt);
+  const status=row&&!serverNewer?row.status:fallback;
+  const chip='<span class="status-chip '+esc(statusClass(status))+'">'+esc(status)+'</span>';
+  if(!row)return chip;
+  const conflict=['conflict','needs-review'].includes(row.state);
+  const note=serverNewer?'⚠ Хожуу серверийн төлөв байна · Offline бүртгэлээ шалга'
+    :conflict?'⚠ Синк зөрчилтэй · Жагсаалтаар шалга':'⏳ Синк хүлээж байна';
+  const info='Утсанд хадгалсан '+display(row.recordedAt)+'. Серверт баталгаажаагүй.';
+  return chip+'<div class="offline-status-note'+(conflict||serverNewer?' offline-status-warning':'')+'" title="'+esc(info)+'" role="status">'+note+'</div>';
+}
+function paintVisualStatuses(uid,rows){
+  if(uid!==user())return;
+  visualUser=uid;
+  const next=new Map();
+  // Queue is chronologically sorted. Show the most recently captured status per machine.
+  for(const row of rows){
+    if(!row||!row.equipmentId||row.kind!=='status')continue;
+    const key=String(row.equipmentId),old=next.get(key);
+    if(!old||row.recordedAt>=old.recordedAt)next.set(key,row);
+  }
+  visualRows=next;
+  for(const node of document.querySelectorAll('[data-offline-status-for]')){
+    const eq=equipment.find(x=>String(x.id)===node.dataset.offlineStatusFor);
+    if(eq)node.innerHTML=visualStatusHtml(eq);
+  }
+}
 const coreShell=['/','/index.html','/offline-store.js','/offline-integration.js'];
 async function cachedShellReady(){
   if(!('caches' in window))return false;
@@ -50,6 +90,7 @@ async function prepareOffline(){
 }
 const css=document.createElement('style');
 css.textContent='#offlineQBar{position:fixed;left:12px;bottom:12px;z-index:70;background:#252c35;color:white;border:1px solid #fa9d3b;border-radius:9px;padding:8px 10px;font-size:13px;box-shadow:0 5px 20px #0006}#offlineQBar button{margin-left:7px}#offlineQPanel{position:fixed;inset:0;z-index:90;background:#000c;display:flex;align-items:center;justify-content:center;padding:12px}#offlineQPanel[hidden]{display:none}#offlineQContent{background:#242b33;color:white;border-radius:12px;border:1px solid #555;width:min(580px,100%);padding:14px;max-height:85vh;overflow:auto}#offlineQRows article{border-top:1px solid #4c5965;padding:10px 0}#offlineQRows .offline-error{color:#ffc28a;white-space:pre-wrap}';
+css.textContent+='.current .offline-status-note{display:inline-block;margin-top:6px;font-size:11px;line-height:1.4;font-weight:600;color:#e6bc75;background:rgba(101,70,32,.18);border:1px solid rgba(242,167,62,.35);border-radius:6px;padding:3px 7px}.current .offline-status-warning{color:#ffa19a;background:rgba(110,37,37,.24);border-color:rgba(248,123,110,.55)}';
 document.head.append(css);
 const bar=document.createElement('div');bar.id='offlineQBar';bar.setAttribute('role','status');document.body.append(bar);
 const panel=document.createElement('div');panel.id='offlineQPanel';panel.hidden=true;
@@ -72,6 +113,7 @@ async function retryPending(){
 async function renderQueue(){
   let rows=[];
   try{if(user())rows=await store.list(user());}catch(e){bar.textContent='Offline санах ой алдаа: '+e.message;return;}
+  paintVisualStatuses(user(),rows);
   let snap=null;try{if(user())snap=await store.getSnapshot(user());}catch(_){}
   const dataReady=!!(snap?.data?.equipment?.length&&snap?.data?.statuses?.length);
   const shellReady=await cachedShellReady();
@@ -144,7 +186,7 @@ async function sync(){
     await navigator.locks.request('data-event-offline-sync',{ifAvailable:true},async lock=>{if(lock)await syncNow()});
   }else await syncNow();
 }
-window.DataEventOfflineBridge={queueStatus,sync,renderQueue};
+window.DataEventOfflineBridge={queueStatus,sync,renderQueue,visualStatusHtml};
 window.addEventListener('data-offline-queue-changed',()=>void renderQueue());
 document.addEventListener('data-offline-snapshot-saved',()=>void renderQueue());
 document.addEventListener('data-offline-snapshot-loaded',()=>void renderQueue());
