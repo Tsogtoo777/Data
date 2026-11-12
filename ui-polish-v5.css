@@ -1,0 +1,57 @@
+
+/* V5 visual refinement: existing status palette, timeline and business logic are not changed. */
+:root{
+  --ui-bg:#171d25;--ui-panel:#222b36;--ui-raised:#2d3845;
+  --ui-line:#465462;--ui-text:#f2f5f9;--ui-muted:#bfccd9;--ui-accent:#ff8a38
+}
+body{background:var(--ui-bg);color:var(--ui-text);font-variant-numeric:tabular-nums}
+header{background:linear-gradient(180deg,#242d38,#202832);border-bottom-color:#526071}
+header h1{font-weight:800;letter-spacing:.2px}
+header small,.subtle,.meta,.type,.event-extra{color:var(--ui-muted)}
+.card,.eq,.stat,.panel{border-color:var(--ui-line);box-shadow:0 5px 18px #090d1229}
+.stat{background:linear-gradient(145deg,#27313d,#222b36);border-radius:10px}
+.stats .stat b{color:#fff;font-size:clamp(21px,2vw,27px);letter-spacing:-.5px}
+input,select,textarea{color:#f2f5f9;border-color:#596879}
+input:hover:not(:disabled),select:hover:not(:disabled),textarea:hover:not(:disabled){border-color:#8293a5}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #ffb27b;outline-offset:2px}
+input::placeholder,textarea::placeholder{color:#abb9c9}
+button.primary,.primary{box-shadow:0 2px 9px #ff8a382b}
+button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:#ffa15e;border-color:#ffa15e;color:#121820}
+#msg,.toaster{max-width:calc(100vw - 24px);line-height:1.45;box-shadow:0 10px 30px #0008}
+@media(max-width:760px){
+ header{background:#202832}
+ main{padding-bottom:calc(34px + env(safe-area-inset-bottom,0px))}
+ .stats .stat{padding:13px 12px}
+}
+@media(prefers-reduced-motion:reduce){button,.eq,.entry{transition:none!important}}
+
+
+/* Navigation and equipment cards */
+nav{border-bottom:1px solid var(--ui-line)}
+nav button[data-page],#extraMenuD2>summary{border-radius:8px;font-weight:700}
+nav button[data-page].active,#extraMenuD2.selected>summary{box-shadow:inset 0 -3px 0 #ffffff52}
+nav button[data-page]:hover:not(.active),#extraMenuD2>summary:hover{border-color:#8192a4}
+#eq .eq{border-radius:10px;transition:border-color .16s ease,box-shadow .16s ease}
+#eq .eq:hover,#eq .eq:focus-within{border-color:#66798b;box-shadow:0 5px 22px #0000003d}
+#eq .name{color:#f8fafc;font-size:15px;letter-spacing:.1px}
+#eq .current{border-radius:7px;line-height:1.5}
+#eq .status-trigger{border-radius:7px;font-weight:700;background:#344151;border-color:#647489}
+#eq .status-trigger:hover:not(:disabled){background:#425369;border-color:#899bb0}
+#eq .equipment-location{border-radius:8px!important}
+.modal{background:#222b36;border:1px solid #617083;box-shadow:0 24px 80px #000a}
+.modal-title{font-size:18px;font-weight:800}
+.modal-grid{gap:9px}
+.modal-grid button{line-height:1.4}
+.modal-actions{padding-top:8px;border-top:1px solid #465462}
+#quickToolbarQ6 button{font-weight:750}
+@media(min-width:1000px){main{padding-top:15px}.stats{gap:12px}nav{padding-top:9px;padding-bottom:9px}}
+@media(max-width:760px){
+ nav{gap:8px}
+ nav button[data-page],nav #extraMenuD2>summary{border-radius:10px}
+ #eq .eq{border-radius:12px}
+ #eq .name{font-size:16px}
+ #eq .status-trigger{min-height:46px}
+ .modal{border-radius:18px 18px 0 0}
+ .modal-actions{gap:10px}
+ .modal-actions button{flex:1 1 0}
+}
