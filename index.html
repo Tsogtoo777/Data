@@ -476,7 +476,7 @@ async function saveOfflineSnapshot(){
   }catch(error){console.warn('Offline metadata save failed:',error);return false;}
 }
 async function loadData() {
-  if(!navigator.onLine && await restoreOfflineSnapshot())return;
+  if((activeSession?.access_token==='offline-only'||!navigator.onLine)&&await restoreOfflineSnapshot())return;
   try {
     equipment = await api("equipment?select=*&order=name");
     const statusRows = await api("status_types?select=name&order=id");
@@ -1353,6 +1353,27 @@ showStatusCategory=function(index){showCategoryBeforeQ6(index);markStatusChoiceQ
 const showSearchBeforeQ6=showStatusSearchResults;
 showStatusSearchResults=function(){showSearchBeforeQ6();markStatusChoiceQ6(0);};
 
+
+function offlineNetworkProblem(error){
+  return !navigator.onLine||/Failed to fetch|NetworkError|Network request failed|fetch failed|Load failed|ERR_INTERNET_DISCONNECTED/i.test(String(error?.message||error||''));
+}
+// Local access to an existing account snapshot; never treated as live server authentication.
+async function tryCachedOfflineSession(requestedLogin=''){
+  if(!window.DataOffline)return false;
+  const cached=await DataOffline.lastUser();
+  const role=String(cached?.app_metadata?.role||'').toLowerCase();
+  if(!cached?.id||!['event_editor','master','dispatcher','management','admin','viewer'].includes(role))return false;
+  const entered=String(requestedLogin||'').trim();
+  if(entered){
+    const savedEmail=String(cached.email||'').trim().toLowerCase();
+    if(!savedEmail||resolveLoginName(entered).toLowerCase()!==savedEmail)return false;
+  }
+  const snapshot=await DataOffline.getSnapshot(cached.id);
+  if(!snapshot?.data?.equipment?.length||!snapshot.data.statuses?.length)return false;
+  await applySession({user:cached,access_token:'offline-only',expires_at:9999999999});
+  return true;
+}
+
 document.getElementById("authForm").addEventListener("submit", async function(e) {
   e.preventDefault();
   loginSubmit.disabled = true;
@@ -1365,7 +1386,17 @@ document.getElementById("authForm").addEventListener("submit", async function(e)
     if (error) throw error;
     await applySession(data.session);
   } catch (err) {
-    loginError.textContent = "Нэвтрэх боломжгүй: " + (err.message || "Алдаа гарлаа");
+    if(offlineNetworkProblem(err)){
+      try{
+        if(await tryCachedOfflineSession(document.getElementById("authEmail").value)){
+          toast('Offline: энэ компьютерт хадгалсан техник, төлөвийг нээлээ.');
+          return;
+        }
+      }catch(e){console.warn('Offline login fallback:',e);}
+      loginError.textContent='Сүлжээ холбогдохгүй байна. Энэ компьютерт өмнө нь онлайнаар нэвтэрч, “Offline бэлдэх” хийгээгүй бол offline ажиллах боломжгүй.';
+    }else{
+      loginError.textContent = "Нэвтрэх боломжгүй: " + (err.message || "Алдаа гарлаа");
+    }
   } finally { loginSubmit.disabled = false; }
 });
 logoutButton.addEventListener("click", async function() {
@@ -1381,26 +1412,22 @@ authClient.auth.onAuthStateChange((event,session)=>{
 });
 (async function startAuth() {
   try {
-    const {data, error} = await authClient.auth.getSession();
-    if (error) throw error;
+    const {data, error}=await authClient.auth.getSession();
+    if(error)throw error;
     if(data.session)await applySession(data.session);
-    else if(!navigator.onLine && window.DataOffline){
-      const cached=await DataOffline.lastUser();
-      if(cached?.id && cached.app_metadata?.role){
-        await applySession({user:cached,access_token:'offline-only',expires_at:9999999999});
+    else if(!navigator.onLine){
+      if(!(await tryCachedOfflineSession())){
+        loginError.textContent='Offline мэдээлэл алга. Энэ компьютерт интернэттэй үед нэвтэрч, “Offline бэлдэх” дарна уу.';
       }
     }
-  } catch(err) {
-    if(!navigator.onLine && window.DataOffline){
-      try{
-        const cached=await DataOffline.lastUser();
-        if(cached?.id && cached.app_metadata?.role){
-          await applySession({user:cached,access_token:'offline-only',expires_at:9999999999});
-          loginError.textContent='';return;
-        }
-      }catch(_){}
+  }catch(err){
+    if(offlineNetworkProblem(err)){
+      try{if(await tryCachedOfflineSession())return;}
+      catch(e){console.warn('Offline session recovery:',e);}
+      loginError.textContent='Сүлжээ холбогдохгүй байна. Offline ашиглахын тулд энэ хаягаар өмнө нь нэвтэрч, “Offline бэлдэх” хийсэн байх шаардлагатай.';
+      return;
     }
-    loginError.textContent = "Нэвтрэлтийг шалгахад алдаа: " + err.message;
+    loginError.textContent='Нэвтрэлтийг шалгахад алдаа: '+String(err.message||err);
   }
 })();
 
