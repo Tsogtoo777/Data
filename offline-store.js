@@ -50,7 +50,7 @@ async function addStatus(uid,d){
 async function updateRecord(r){await tx('queue','readwrite',o=>o.put(r));notify();}
 async function deleteRecord(id){await tx('queue','readwrite',o=>o.delete(id));notify();}
 async function rememberUser(u){
-  if(u?.id)await write('users','latest',{id:String(u.id),app_metadata:{role:String(u.app_metadata?.role||'')}});
+  if(u?.id)await write('users','latest',{id:String(u.id),email:String(u.email||'').trim().toLowerCase(),app_metadata:{role:String(u.app_metadata?.role||'')}});
 }
 const lastUser=()=>read('users','latest');
 const forgetUser=()=>tx('users','readwrite',o=>o.delete('latest'));
