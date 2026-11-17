@@ -2210,6 +2210,10 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
    rels=rels.replace('</Relationships>','<Relationship Id="rId'+rid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+part+'.xml"/></Relationships>');
    types=types.replace('</Types>','<Override PartName="/'+path+'" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
   }
+  if(erp){
+    // Existing CM:DC formula cells remain byte-for-byte identical; force Excel to refresh their cached results.
+    book=book.replace(/<calcPr\b([^>]*?)\/>/,(_,attributes)=>'<calcPr'+attributes.replace(/\s+(?:calcMode|fullCalcOnLoad|forceFullCalc)="[^"]*"/g,'')+' calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>');
+  }
   zip.file('xl/workbook.xml',book);zip.file('xl/_rels/workbook.xml.rels',rels);zip.file('[Content_Types].xml',types);
   if(erp){if(!file)throw Error('ERP Daily Excel загвараа сонгоно уу');const report=await fillERPMain(zip,erp.day,erp.shift,erp.agg);window._lastERPDailyResult=report;}
   const out=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
@@ -2226,8 +2230,18 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
  const lo=Date.parse(day+'T'+(shift==='өдөр'?'07':'19')+':00:00+08:00'),hi=lo+12*3600000;
  let rows=[],offset=0;while(true){const qs='equipment_events?select=id,equipment_id,status,start_time,end_time,operator_name,comment&start_time=lt.'+encodeURIComponent(new Date(hi).toISOString())+'&or=(end_time.is.null,end_time.gt.'+encodeURIComponent(new Date(lo).toISOString())+')&order=start_time.asc&limit=1000&offset='+offset;
  const page=await api(qs);if(!Array.isArray(page))throw Error('Бүртгэлийн хариу буруу');rows.push(...page);if(page.length<1000)break;offset+=page.length;if(offset>50000)throw Error('Хэт олон бүртгэл: мэдээллийг хувааж шалгана уу');}
- const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));let issues=[],detail=[],agg=new Map();
- for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round((end-start)/60000*100)/100;detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
+ const names=new Map((equipment||[]).map(e=>[String(e.id),String(e.name||e.id)]));let issues=[],detail=[],agg=new Map(),segments=new Map();
+ for(const e of rows){const a=Date.parse(e.start_time),b=e.end_time?Date.parse(e.end_time):Math.min(hi,Date.now());if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a){issues.push('ID '+e.id+': цаг буруу');continue;}const start=Math.max(lo,a),end=Math.min(hi,b);if(end<=start)continue;const name=names.get(String(e.equipment_id));if(!name){issues.push('ID '+e.id+': техник танигдсангүй');continue;}const minutes=Math.round(end/60000)-Math.round(start/60000);if(minutes<=0){issues.push('ID '+e.id+': бүтэн минутын хугацаа 0');continue;}detail.push([name,e.operator_name||'',e.status||'',fmt(start),fmt(end),minutes,e.comment||'',e.id]);if(!segments.has(String(e.equipment_id)))segments.set(String(e.equipment_id),[]);segments.get(String(e.equipment_id)).push({start,end,name,id:e.id});const k=String(e.equipment_id)+'|'+String(e.status||'');if(!agg.has(k))agg.set(k,{name,status:e.status||'',minutes:0,operators:new Set()});const v=agg.get(k);v.minutes+=minutes;if(e.operator_name)v.operators.add(e.operator_name);}
+ for(const group of segments.values()){
+   group.sort((a,b)=>a.start-b.start||a.end-b.end);
+   let cursor=lo;
+   for(const e of group){
+     if(e.start!==cursor)issues.push(e.name+': '+(e.start>cursor?'цагийн завсар':'цагийн давхардал')+' ('+fmt(cursor)+' → '+fmt(e.start)+')');
+     cursor=Math.max(cursor,e.end);
+   }
+   if(cursor!==hi)issues.push(group[0].name+': ээлж 12 цаг бүрэн биш ('+fmt(cursor)+' → '+fmt(hi)+')');
+ }
+ if(issues.length)throw Error('DATA бүртгэлийн цагийн алдаа: '+issues.slice(0,6).join(' | '));
  if(!detail.length)throw Error('Энэ ээлжид бүртгэл олдсонгүй.');if(!section.querySelector('#erdReplace').checked)throw Error('Өмнө бөглөгдсөн ээлжийн мэдээллийг шинэчлэх зөвшөөрлийг чагтална уу.');if(!file)throw Error('ERP Daily Excel загвар сонгоно уу');
  // Safe ZIP-level export: preserve every existing workbook part verbatim;
  // add only independent worksheets and the minimum workbook/package links.
@@ -2236,7 +2250,7 @@ window.Weekly24Export={makeWorkbook,replaceCell,mount};mount();
    summary.push([v.name,v.status,Math.round(v.minutes*100)/100,Math.round(v.minutes/60*10000)/10000,[...v.operators].join(', ')]);
  const details=[['Техник','Оператор','Төлөв','Эхэлсэн','Дууссан','Минут','Тайлбар','Бүртгэлийн ID'],...detail];
  const sheets=[['DATA ээлжийн нэгтгэл',summary],['DATA ээлжийн бүртгэл',details]];
- if(issues.length)sheets.push(['DATA шалгах зүйлс',[['Шалгах асуудал'],...issues.map(x=>[x])]]);
+ // Incomplete or overlapping DATA events are rejected before generating a workbook.
  await savePreservedWorkbook(file,sheets,'ERP_Daily_'+day+'_'+(shift==='өдөр'?'DAY':'NIGHT')+'_FILLED.xlsx',{day,shift,agg});
  const er=window._lastERPDailyResult;msg.textContent=detail.length+' бүртгэл, '+agg.size+' нэгтгэл. ERP_Ээлж-д '+(er?.count||0)+' техник бөглөв. '+(er?.warnings?.length?'АНХААР: '+er.warnings.length+' зөрүү байна; зарим техник бөглөгдөөгүй. '+er.warnings.slice(0,8).join(' | '):'Техник, төлөв таарсан.')+' Дэлгэрэнгүй бүртгэл тусдаа sheet-д бий.';
  }catch(e){msg.textContent='Алдаа: '+e.message;}finally{busy=false;button.disabled=false;}}
